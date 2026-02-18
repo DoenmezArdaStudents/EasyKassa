@@ -68,16 +68,26 @@ function sync() {
         return `<tr>
             <td><strong>${u}</strong></td>
             <td>${total.toFixed(2)} €</td>
-            <td style="display: flex; gap: 15px;">
-                <button onclick="pay('${u}')" style="color:var(--success); border:none; background:none; cursor:pointer; font-size:1.1rem;" title="Abrechnen">
-                    <i class="fas fa-check-circle"></i>
-                </button>
-                <button onclick="removeUser('${u}')" style="color:#ef4444; border:none; background:none; cursor:pointer; font-size:1.1rem;" title="Nutzer löschen">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
+            <td>
+                <div class="action-buttons">
+                    <button onclick="pay('${u}')" class="btn-pay" title="Abrechnen">
+                        <i class="fas fa-check-circle"></i>
+                    </button>
+                    <button onclick="removeUser('${u}')" class="btn-delete" title="Löschen">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
             </td>
         </tr>`;
     }).join('');
+}
+
+function removeUser(name) {
+    if(confirm(`${name} wirklich komplett löschen?`)) {
+        users = users.filter(u => u !== name);
+        trans = trans.filter(t => t.person !== name);
+        sync();
+    }
 }
 
 function showSection(id) {
