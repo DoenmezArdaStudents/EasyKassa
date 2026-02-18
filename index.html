@@ -3,119 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DrinkDB Management</title>
+    <title>DrinkDB Business Pro</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="app-container">
-        <aside class="sidebar">
-            <div class="logo"><i class="fas fa-shield-check"></i> <span>DRINK<b>DB</b></span></div>
-            <nav>
-                <ul>
-                    <li id="nav-kassa" class="active" onclick="showSection('kassa')"><i class="fas fa-layer-group"></i> Terminal</li>
-                    <li id="nav-stats" onclick="showSection('stats')"><i class="fas fa-chart-pie"></i> Analytics</li>
-                    <li id="nav-users" onclick="showSection('users')"><i class="fas fa-user-gear"></i> Verwaltung</li>
-                </ul>
-            </nav>
-        </aside>
 
-        <main class="content">
-            <section id="section-kassa" class="active-section">
-                <div class="page-header">
-                    <div>
-                        <h1>Terminal</h1>
-                        <p class="subtitle">Wählen Sie ein Produkt zur Buchung aus.</p>
-                    </div>
-                    <div class="user-pill">
-                        <i class="fas fa-user-circle"></i>
-                        <select id="active-user-select"></select>
-                    </div>
-                </div>
-                <div class="drink-grid" id="drink-grid"></div>
-            </section>
+    <aside class="sidebar">
+        <div class="logo"><i class="fas fa-wallet"></i> <span>Drink<b>DB</b></span></div>
+        <nav>
+            <ul>
+                <li id="nav-kassa" class="active" onclick="showSection('kassa')">
+                    <i class="fas fa-th-large"></i> <span>Terminal</span>
+                </li>
+                <li id="nav-stats" onclick="showSection('stats')">
+                    <i class="fas fa-chart-line"></i> <span>Stats</span>
+                </li>
+                <li id="nav-users" onclick="showSection('users')">
+                    <i class="fas fa-users-cog"></i> <span>Admin</span>
+                </li>
+            </ul>
+        </nav>
+    </aside>
 
-            <section id="section-stats" class="hidden-section">
-                <div class="page-header">
-                    <h1>Finanzübersicht</h1>
-                    <div class="date-navigator">
-                        <button onclick="changeMonth(-1)"><i class="fas fa-angle-left"></i></button>
-                        <span id="current-month-display">Februar 2026</span>
-                        <button onclick="changeMonth(1)"><i class="fas fa-angle-right"></i></button>
-                    </div>
+    <main class="content">
+        <section id="section-kassa" class="active-section">
+            <div class="page-header">
+                <h1>Terminal</h1>
+                <div class="user-pill">
+                    <i class="fas fa-user-circle"></i>
+                    <select id="active-user-select"></select>
                 </div>
-                <div class="stats-row">
-                    <div class="stat-box">
-                        <label>Monatsumsatz</label>
-                        <h2 id="month-revenue">0,00 €</h2>
-                    </div>
-                    <div class="stat-box">
-                        <label>Ø pro Tag</label>
-                        <h2 id="avg-revenue">0,00 €</h2>
-                    </div>
-                    <div class="stat-box">
-                        <label>Buchungen</label>
-                        <h2 id="month-sales">0</h2>
-                    </div>
-                </div>
-                <div class="chart-container card">
-                    <canvas id="revenueChart"></canvas>
-                </div>
-            </section>
+            </div>
+            <div class="drink-grid" id="drink-grid"></div>
+        </section>
 
-            <section id="section-users" class="hidden-section">
-                <div class="page-header">
-                    <h1>Verwaltung</h1>
+        <section id="section-stats" class="hidden-section">
+            <div class="page-header">
+                <h1>Finanzen</h1>
+                <div class="date-navigator">
+                    <button onclick="changeMonth(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span id="current-month-display">Lade...</span>
+                    <button onclick="changeMonth(1)"><i class="fas fa-chevron-right"></i></button>
                 </div>
-                
-                <div class="admin-grid">
-                    <div class="card add-user-card">
-                        <h3><i class="fas fa-user-plus"></i> Nutzer registrieren</h3>
-                        <p>Legen Sie ein neues Konto für die Strichliste an.</p>
-                        <div class="input-wrapper">
-                            <input type="text" id="new-user-name" placeholder="Name eingeben...">
-                            <button onclick="addUser()">Hinzufügen</button>
-                        </div>
-                    </div>
+            </div>
+            <div class="stats-row">
+                <div class="stat-box">
+                    <small>Monat</small>
+                    <h2 id="month-revenue">0,00 €</h2>
+                </div>
+                <div class="stat-box">
+                    <small>Tag Ø</small>
+                    <h2 id="avg-revenue">0,00 €</h2>
+                </div>
+            </div>
+            <div class="card chart-card">
+                <canvas id="revenueChart"></canvas>
+            </div>
+        </section>
 
-                    <div class="card table-card">
-                        <table class="modern-table">
-                            <thead>
-                                <tr>
-                                    <th>Mitglied</th>
-                                    <th>Konsumierte Posten</th>
-                                    <th>Offener Betrag</th>
-                                    <th>Aktionen</th>
-                                </tr>
-                            </thead>
-                            <tbody id="user-billing-body"></tbody>
-                        </table>
-                    </div>
+        <section id="section-users" class="hidden-section">
+            <h1>Verwaltung</h1>
+            <div class="card add-user-section">
+                <h3>Neuer Nutzer</h3>
+                <div class="input-group">
+                    <input type="text" id="new-user-name" placeholder="Name eingeben...">
+                    <button onclick="addUser()" class="btn-primary">Hinzufügen</button>
                 </div>
-            </section>
-        </main>
-    </div>
+            </div>
+            <div class="card table-card">
+                <table class="modern-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Saldo</th>
+                            <th>Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-billing-body"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
 
     <div id="extra-modal" class="modal-overlay">
         <div class="modal-box">
-            <div class="modal-header">
-                <h3>Sonderbuchung</h3>
-                <button onclick="closeExtraModal()" class="close-x">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="field">
-                    <label>Bezeichnung</label>
-                    <input type="text" id="modal-extra-desc" placeholder="z.B. Mittagsmenü">
-                </div>
-                <div class="field">
-                    <label>Betrag in €</label>
-                    <input type="number" id="modal-extra-amount" placeholder="0.00" step="0.10">
-                </div>
-            </div>
+            <h3>Sonderbuchung</h3>
+            <input type="text" id="modal-extra-desc" placeholder="Beschreibung">
+            <input type="number" id="modal-extra-amount" placeholder="Betrag in €">
             <div class="modal-footer">
-                <button onclick="closeExtraModal()" class="btn-cancel">Abbrechen</button>
-                <button onclick="confirmExtra()" class="btn-confirm">Buchen bestätigen</button>
+                <button onclick="closeExtraModal()" class="btn-text">Abbruch</button>
+                <button onclick="confirmExtra()" class="btn-primary">Buchen</button>
             </div>
         </div>
     </div>
