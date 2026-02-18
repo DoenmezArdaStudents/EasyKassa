@@ -103,3 +103,37 @@ nav li.active { color: var(--primary); }
     .content { margin-left: 260px; padding: 50px; }
     .drink-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 }
+
+/* Styling für die Aktions-Buttons in der Tabelle */
+.action-buttons {
+    display: flex;
+    gap: 20px; /* Viel Platz für den Daumen auf dem Handy */
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.action-buttons button {
+    border: none;
+    background: none;
+    font-size: 1.3rem; /* Größer für Touch-Bedienung */
+    cursor: pointer;
+    padding: 5px; /* Vergrößert die Klickfläche */
+}
+
+.btn-pay { color: var(--success); }
+.btn-delete { color: #ef4444; }
+
+/* Speziell für kleine Handy-Displays */
+@media (max-width: 600px) {
+    .modern-table td {
+        padding: 15px 5px; /* Mehr Höhe für jede Zeile auf dem Handy */
+    }
+    
+    .action-buttons {
+        gap: 25px; /* Noch mehr Abstand auf dem Handy */
+    }
+    
+    .action-buttons button {
+        font-size: 1.5rem; /* Maximal groß für das Handy */
+    }
+}
