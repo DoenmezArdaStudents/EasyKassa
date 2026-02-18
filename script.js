@@ -68,7 +68,14 @@ function sync() {
         return `<tr>
             <td><strong>${u}</strong></td>
             <td>${total.toFixed(2)} €</td>
-            <td><button onclick="pay('${u}')" style="color:green; border:none; background:none;"><i class="fas fa-check-circle"></i></button></td>
+            <td style="display: flex; gap: 15px;">
+                <button onclick="pay('${u}')" style="color:var(--success); border:none; background:none; cursor:pointer; font-size:1.1rem;" title="Abrechnen">
+                    <i class="fas fa-check-circle"></i>
+                </button>
+                <button onclick="removeUser('${u}')" style="color:#ef4444; border:none; background:none; cursor:pointer; font-size:1.1rem;" title="Nutzer löschen">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </td>
         </tr>`;
     }).join('');
 }
@@ -123,6 +130,13 @@ function renderChart() {
 function changeMonth(delta) { viewDate.setMonth(viewDate.getMonth() + delta); updateStats(); }
 function addUser() { const n = document.getElementById('new-user-name'); if(n.value) { users.push(n.value); n.value=""; sync(); } }
 function pay(name) { if(confirm(`${name} abrechnen?`)) { trans = trans.filter(t => t.person !== name); sync(); } }
+function removeUser(name) {
+    if(confirm(`Möchtest du ${name} wirklich komplett aus der Liste löschen? Alle Daten gehen verloren.`)) {
+        users = users.filter(u => u !== name);
+        trans = trans.filter(t => t.person !== name);
+        sync();
+    }
+}
 function openExtraModal() { document.getElementById('extra-modal').style.display = 'block'; }
 function closeExtraModal() { document.getElementById('extra-modal').style.display = 'none'; }
 function confirmExtra() {
