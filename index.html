@@ -9,6 +9,30 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    
+    <div id="user-select-modal" class="modal-overlay" style="background: rgba(0,0,0,0.8);">
+    <div class="modal-box" style="max-width: 400px; padding: 15px; border-radius: 12px;">
+        <h3 style="margin-bottom: 15px; text-align: center;">Wer bucht?</h3>
+        
+        <div id="user-selection-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+            </div>
+
+        <button onclick="closeUserModal()" style="width: 100%; margin-top: 15px; padding: 12px; background: #64748b; color: white; border: none; border-radius: 8px; font-weight: bold;">
+            Abbrechen
+        </button>
+    </div>
+</div>
+
+<div id="item-details-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 400px;">
+        <h3 id="details-user-name">Produkte von ...</h3>
+        <div id="item-list-container" style="margin-top: 15px; max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+            </div>
+        <div class="modal-footer" style="margin-top: 20px;">
+            <button onclick="closeDetailsModal()" class="btn-book" style="background: #64748b; width: 100%;">Schließen</button>
+        </div>
+    </div>
+</div>
 
     <aside class="sidebar">
             <div class="logo" onclick="handleLogoClick()" style="cursor: pointer;">

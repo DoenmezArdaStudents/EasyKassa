@@ -10,17 +10,18 @@ const produkte = [
 let users = JSON.parse(localStorage.getItem('biz_users')) || ["Gast"];
 let trans = JSON.parse(localStorage.getItem('biz_trans')) || [];
 let archive = JSON.parse(localStorage.getItem('biz_archive')) || [];
-let revenueOffset = parseFloat(localStorage.getItem('biz_revenue_offset')) || 0; // WICHTIG: Damit Gesamtumsatz stimmt
+let revenueOffset = parseFloat(localStorage.getItem('biz_revenue_offset')) || 0;
 let isSuperUser = localStorage.getItem('isSuperUser') === 'true';
 let viewDate = new Date();
 let chart = null;
 let pendingAdminAction = null;
+let currentPendingDrink = null;
 const ADMIN_PASSWORD = "122461";
 
 // --- CORE LOGIK ---
 function init() {
     renderDrinks();
-    checkSuperUser(); // Prüfen ob bereits eingeloggt
+    checkSuperUser();
     sync();
 }
 
@@ -49,8 +50,7 @@ function requireAdmin(callback = null) {
         return;
     }
     pendingAdminAction = callback;
-    const modal = document.getElementById('admin-login-modal');
-    modal.style.display = 'block';
+    document.getElementById('admin-login-modal').style.display = 'block';
     document.getElementById('admin-password-input').value = "";
     document.getElementById('admin-password-input').focus();
 }
@@ -60,7 +60,6 @@ function submitAdminAuth() {
     if (input.value === ADMIN_PASSWORD) {
         isSuperUser = true;
         localStorage.setItem('isSuperUser', 'true');
-        input.value = ""; 
         document.getElementById('admin-login-modal').style.display = 'none';
         checkSuperUser();
         if (pendingAdminAction) {
@@ -83,10 +82,9 @@ function logout() {
     localStorage.setItem('isSuperUser', 'false');
     document.body.classList.remove('admin-logged-in');
     showSection('kassa');
-    alert("Abgemeldet.");
 }
 
-// --- APP FUNKTIONEN ---
+// --- BUCHUNGS-LOGIK (MODAL) ---
 function renderDrinks() {
     const grid = document.getElementById('drink-grid');
     grid.innerHTML = produkte.map(p => `
@@ -94,7 +92,7 @@ function renderDrinks() {
             <img src="${p.img}">
             <h3>${p.name}</h3>
             <p style="color:var(--primary); font-weight:bold;">${p.preis.toFixed(2)} €</p>
-            <button class="btn-book" onclick="buy('${p.name}', ${p.preis}, event)">Buchen</button>
+            <button class="btn-book" onclick="buy('${p.name}', ${p.preis})">Buchen</button>
         </div>
     `).join('') + `
         <div class="drink-card" style="border-style:dashed; cursor:pointer;" onclick="openExtraModal()">
@@ -104,54 +102,109 @@ function renderDrinks() {
     `;
 }
 
-function buy(name, preis, event) {
-    const user = document.getElementById('active-user-select').value;
-    const txId = "tx_" + Date.now();
-    trans.push({ id: txId, person: user, product: name, price: preis, date: new Date().toISOString(), status: 'open' });
-    sync();
-    showBookingFeedback(event?.currentTarget, `${name} • ${preis.toFixed(2)} €`);
+function buy(name, preis) {
+    currentPendingDrink = { name, preis };
+    openUserModal();
 }
 
-function showBookingFeedback(buttonEl, text) {
-    if (buttonEl) {
-        const card = buttonEl.closest('.drink-card');
-        if (card) {
-            card.classList.remove('booked-flash');
-            void card.offsetWidth;
-            card.classList.add('booked-flash');
-            setTimeout(() => card.classList.remove('booked-flash'), 450);
+// --- OPTIMIERTES NUTZER-MODAL ---
+function openUserModal() {
+    const modal = document.getElementById('user-select-modal');
+    const listContainer = document.getElementById('user-selection-list');
+    
+    // Header & Container Styling
+    listContainer.style.background = "#f1f5f9";
+    listContainer.style.padding = "15px";
+    listContainer.style.borderRadius = "12px";
+
+    listContainer.innerHTML = users.map(u => `
+        <div onclick="confirmBookingForUser('${u}')" class="user-grid-item">
+            <span>${u}</span>
+            <i class="fas fa-chevron-right"></i>
+        </div>
+    `).join('');
+    
+    modal.style.display = 'block';
+}
+
+// --- OPTIMIERTES KORREKTUR-MODAL ---
+function showItemDetails(userName) {
+    requireAdmin(() => {
+        const modal = document.getElementById('item-details-modal');
+        const container = document.getElementById('item-list-container');
+        document.getElementById('details-user-name').innerHTML = `
+            <i class="fas fa-user-edit" style="color:var(--primary); margin-right:10px;"></i>
+            Korrektur: ${userName}
+        `;
+
+        const userItems = trans.filter(t => t.person === userName);
+        
+        if (userItems.length === 0) {
+            container.innerHTML = `
+                <div style="padding:40px; text-align:center;">
+                    <i class="fas fa-check-circle" style="font-size:3rem; color:#10b981; margin-bottom:15px; display:block;"></i>
+                    <p style="color:gray;">Alles erledigt! Keine offenen Posten.</p>
+                </div>`;
+        } else {
+            container.innerHTML = userItems.map(t => `
+                <div class="correction-item">
+                    <div>
+                        <div style="font-weight:800; color:#1e293b;">${t.product}</div>
+                        <div style="font-size:0.8rem; color:#64748b;">
+                            <i class="far fa-clock"></i> ${new Date(t.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <span style="font-weight:700; color:var(--primary);">${t.price.toFixed(2)} €</span>
+                        <button onclick="deleteSingleItem('${t.id}', '${userName}')" 
+                                style="background:#fee2e2; border:none; color:#ef4444; width:35px; height:35px; border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
         }
+        modal.style.display = 'block';
+    });
+}
 
-        const originalText = buttonEl.dataset.originalText || buttonEl.textContent;
-        buttonEl.dataset.originalText = originalText;
-        buttonEl.textContent = '✅ Gebucht';
-        buttonEl.classList.add('booked-ok');
-        setTimeout(() => {
-            buttonEl.textContent = originalText;
-            buttonEl.classList.remove('booked-ok');
-        }, 900);
+function confirmBookingForUser(userName) {
+    if (!currentPendingDrink) return;
+    const { name, preis } = currentPendingDrink;
+    
+    trans.push({ 
+        id: "tx_" + Date.now(), 
+        person: userName, 
+        product: name, 
+        price: preis, 
+        date: new Date().toISOString(), 
+        status: 'open' 
+    });
+    
+    sync();
+    showBookingToast(`${name} für ${userName}`);
+    closeUserModal();
+}
+
+function closeUserModal() {
+    document.getElementById('user-select-modal').style.display = 'none';
+    currentPendingDrink = null;
+}
+
+function deleteSingleItem(txId, userName) {
+    if(confirm("Dieses Produkt stornieren? (Kein Einfluss auf Umsatz-Archiv)")) {
+        trans = trans.filter(t => t.id !== txId);
+        sync();
+        showItemDetails(userName); 
     }
-
-    showBookingToast(text);
 }
 
-function showBookingToast(message) {
-    const existing = document.getElementById('booking-toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.id = 'booking-toast';
-    toast.className = 'booking-toast';
-    toast.textContent = `Gebucht: ${message}`;
-    document.body.appendChild(toast);
-
-    requestAnimationFrame(() => toast.classList.add('show'));
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 260);
-    }, 1400);
+function closeDetailsModal() {
+    document.getElementById('item-details-modal').style.display = 'none';
 }
 
+// --- CORE SYSTEM (SYNC & ADMIN) ---
+// --- OPTIMIERTE SYNC FUNKTION MIT SCHÖNEN BADGES ---
 function sync() {
     localStorage.setItem('biz_users', JSON.stringify(users));
     localStorage.setItem('biz_trans', JSON.stringify(trans));
@@ -159,30 +212,54 @@ function sync() {
     localStorage.setItem('biz_revenue_offset', revenueOffset);
     
     users.sort();
-    const select = document.getElementById('active-user-select');
-    const last = select.value;
-    select.innerHTML = users.map(u => `<option value="${u}">${u}</option>`).join('');
-    if(users.includes(last)) select.value = last;
 
     const tbody = document.getElementById('user-billing-body');
-    tbody.innerHTML = users.map(u => {
-        const userTrans = trans.filter(t => t.person === u);
-        const total = userTrans.reduce((s,t) => s + t.price, 0);
-        const productCount = {};
-        userTrans.forEach(t => {
-            const key = t.product || 'Unbekannt';
-            productCount[key] = (productCount[key] || 0) + 1;
-        });
-        const productsText = Object.entries(productCount)
-            .map(([product, count]) => `${count}x ${product}`)
-            .join(', ') || '-';
+    if (tbody) {
+        tbody.innerHTML = users.map(u => {
+            const userTrans = trans.filter(t => t.person === u);
+            const total = userTrans.reduce((s,t) => s + t.price, 0);
+            const count = userTrans.length;
 
-        return `<tr><td><strong>${u}</strong></td><td>${productsText}</td><td>${total.toFixed(2)} €</td>
-            <td><div class="action-buttons">
-                <button onclick="pay('${u}')" class="btn-pay"><i class="fas fa-check-circle"></i></button>
-                <button onclick="removeUser('${u}')" class="btn-delete"><i class="fas fa-trash-alt"></i></button>
-            </div></td></tr>`;
-    }).join('');
+            // Definition des Badges basierend auf der Anzahl
+            let itemsBadge = '';
+            if (count === 0) {
+                // Leer-Zustand: Grau und unauffällig
+                itemsBadge = `
+                    <span class="items-badge badge-empty">
+                        <i class="fas fa-circle" style="font-size:0.6rem; opacity:0.4;"></i> 0
+                    </span>`;
+            } else {
+                // Offene Posten: Blau, fett und klickbar
+                itemsBadge = `
+                    <span class="items-badge badge-open" onclick="showItemDetails('${u}')">
+                        <i class="fas fa-shopping-basket"></i> ${count}
+                    </span>`;
+            }
+
+            return `
+                <tr>
+                    <td style="padding: 15px 10px;">
+                        <div style="font-weight:800; color:#1e293b; font-size:1rem;">${u}</div>
+                    </td>
+                    <td style="text-align: center;">
+                        ${itemsBadge}
+                    </td>
+                    <td style="text-align: right; font-weight:800; color:var(--text); font-size:1rem; padding-right:15px;">
+                        ${total.toFixed(2)} €
+                    </td>
+                    <td>
+                        <div class="action-buttons" style="justify-content: flex-end; gap: 10px;">
+                            <button onclick="pay('${u}')" class="btn-pay" title="Bezahlen">
+                                <i class="fas fa-check-circle" style="font-size:1.6rem;"></i>
+                            </button>
+                            <button onclick="removeUser('${u}')" class="btn-delete" title="Löschen">
+                                <i class="fas fa-minus-circle" style="font-size:1.6rem; opacity:0.6;"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
 
     renderAdminBookings();
     if(document.getElementById('section-stats').classList.contains('active-section')) updateStats();
@@ -209,14 +286,35 @@ function removeUser(name) {
     });
 }
 
-// --- STATS SYSTEM (DEIN NEUES DASHBOARD) ---
+function showBookingToast(message) {
+    const existing = document.getElementById('booking-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'booking-toast';
+    toast.className = 'booking-toast';
+    toast.textContent = `Gebucht: ${message}`;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 260);
+    }, 1400);
+}
+
+// --- STATS & NAV ---
+function showSection(id) {
+    document.querySelectorAll('section').forEach(s => s.className = 'hidden-section');
+    document.getElementById(`section-${id}`).className = 'active-section';
+    document.querySelectorAll('nav li').forEach(l => l.classList.remove('active'));
+    document.getElementById(`nav-${id}`).classList.add('active');
+    if(id === 'stats') updateStats();
+}
+
 function updateStats() {
     if(!isSuperUser) return;
-
     const m = viewDate.getMonth();
     const y = viewDate.getFullYear();
-    document.getElementById('current-month-display').innerText = 
-        viewDate.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
+    document.getElementById('current-month-display').innerText = viewDate.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
     
     const allTrans = [...trans, ...archive];
     const monthlyData = allTrans.filter(t => {
@@ -226,12 +324,11 @@ function updateStats() {
 
     const monthRevenue = monthlyData.reduce((s, t) => s + t.price, 0);
     const totalRevenue = allTrans.reduce((s, t) => s + t.price, 0) + revenueOffset;
-    const avgSale = monthlyData.length > 0 ? (monthRevenue / monthlyData.length) : 0;
 
     document.getElementById('month-revenue').innerText = monthRevenue.toFixed(2) + " €";
     document.getElementById('total-revenue').innerText = totalRevenue.toFixed(2) + " €";
     document.getElementById('month-sales-count').innerText = monthlyData.length;
-    document.getElementById('avg-sale').innerText = avgSale.toFixed(2) + " €";
+    document.getElementById('avg-sale').innerText = (monthlyData.length > 0 ? monthRevenue / monthlyData.length : 0).toFixed(2) + " €";
 
     renderRankings(monthlyData);
     renderJournal(allTrans);
@@ -242,25 +339,19 @@ function renderRankings(data) {
     const counts = {};
     data.forEach(t => { counts[t.product] = (counts[t.product] || 0) + 1; });
     const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5);
-    let html = '<h4>Beliebteste Produkte</h4>';
-    sorted.forEach(([name, count]) => {
-        html += `<div class="rank-item"><span>${name}</span><span>${count}x</span></div>`;
-    });
-    document.getElementById('top-lists-content').innerHTML = html;
+    document.getElementById('top-lists-content').innerHTML = '<h4>Top Produkte</h4>' + sorted.map(([n, c]) => `<div class="rank-item"><span>${n}</span><span>${c}x</span></div>`).join('');
 }
 
 function renderJournal(data) {
-    const body = document.getElementById('journal-body');
     const latest = [...data].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 50);
-    body.innerHTML = latest.map(t => `
+    document.getElementById('journal-body').innerHTML = latest.map(t => `
         <tr>
             <td><small>${new Date(t.date).toLocaleDateString('de-DE')}</small></td>
             <td>${t.person}</td>
             <td>${t.product}</td>
             <td>${t.price.toFixed(2)} €</td>
-            <td><span class="status-badge ${t.status === 'paid' ? 'paid' : 'open'}">${t.status === 'paid' ? 'Bezahlt' : 'Offen'}</span></td>
-        </tr>
-    `).join('');
+            <td><span class="status-badge ${t.status}">${t.status === 'paid' ? 'Bezahlt' : 'Offen'}</span></td>
+        </tr>`).join('');
 }
 
 function renderChart(dataList) {
@@ -270,39 +361,24 @@ function renderChart(dataList) {
     for(let i = 5; i >= 0; i--) {
         let d = new Date(); d.setMonth(d.getMonth() - i);
         labels.push(d.toLocaleString('de-DE', { month: 'short' }));
-        const sum = dataList.filter(t => {
+        chartData.push(dataList.filter(t => {
             const td = new Date(t.date);
             return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear();
-        }).reduce((s, x) => s + x.price, 0);
-        chartData.push(sum);
+        }).reduce((s, x) => s + x.price, 0));
     }
-    chart = new Chart(ctx, {
-        type: 'line',
-        data: { labels, datasets: [{ label: 'Umsatz', data: chartData, borderColor: '#2563eb', fill: true, tension: 0.4 }] }
-    });
+    chart = new Chart(ctx, { type: 'line', data: { labels, datasets: [{ label: 'Umsatz', data: chartData, borderColor: '#2563eb', tension: 0.4 }] } });
 }
 
 function renderAdminBookings() {
-    const body = document.getElementById('admin-booking-body');
     const allHistory = [...trans, ...archive].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 20);
-    body.innerHTML = allHistory.map(t => `
+    document.getElementById('admin-booking-body').innerHTML = allHistory.map(t => `
         <tr>
             <td>${new Date(t.date).toLocaleDateString('de-DE')}</td>
             <td>${t.person}</td>
             <td>${t.product}</td>
             <td>${t.price.toFixed(2)} €</td>
             <td>${t.status === 'paid' ? '✅ Bezahlt' : 'Offen'}</td>
-        </tr>
-    `).join('');
-}
-
-// --- NAV & MODAL ---
-function showSection(id) {
-    document.querySelectorAll('section').forEach(s => s.classList.replace('active-section', 'hidden-section'));
-    document.getElementById(`section-${id}`).classList.replace('hidden-section', 'active-section');
-    document.querySelectorAll('nav li').forEach(l => l.classList.remove('active'));
-    document.getElementById(`nav-${id}`).classList.add('active');
-    if(id === 'stats') updateStats();
+        </tr>`).join('');
 }
 
 function changeMonth(delta) { viewDate.setMonth(viewDate.getMonth() + delta); updateStats(); }
@@ -310,14 +386,12 @@ function addUser() { const n = document.getElementById('new-user-name'); if(n.va
 function openExtraModal() { document.getElementById('extra-modal').style.display = 'block'; }
 function closeExtraModal() { document.getElementById('extra-modal').style.display = 'none'; }
 function confirmExtra() {
-    const u = document.getElementById('active-user-select').value;
     const d = document.getElementById('modal-extra-desc').value;
     const a = parseFloat(document.getElementById('modal-extra-amount').value);
     if(!isNaN(a)) {
-        trans.push({ id: "ex_"+Date.now(), person: u, product: d || 'Extra', price: a, date: new Date().toISOString(), status: 'open' });
-        sync();
-        showBookingToast(`${d || 'Extra'} • ${a.toFixed(2)} €`);
+        currentPendingDrink = { name: d || 'Extra', preis: a };
         closeExtraModal();
+        openUserModal();
     }
 }
 

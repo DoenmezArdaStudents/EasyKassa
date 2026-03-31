@@ -453,3 +453,108 @@ body.is-admin #section-stats.active-section {
 }
 
 .rank-item span:last-child { font-weight: bold; color: var(--primary); }
+
+/* Styling für die Namenskacheln im Modal */
+.user-grid-item {
+    padding: 20px;
+    margin-bottom: 12px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.user-grid-item:active {
+    transform: scale(0.96);
+    border-color: var(--primary);
+    background: #eff6ff;
+}
+
+.user-grid-item i {
+    color: var(--primary);
+    opacity: 0.5;
+}
+
+/* Scrollbar für die Liste verschönern */
+#user-selection-list::-webkit-scrollbar,
+#item-list-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+#user-selection-list::-webkit-scrollbar-thumb,
+#item-list-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+/* Styling für die Einzel-Produkte im Korrektur-Modal */
+.correction-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin: 8px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+/* Grundstyling für das neue Items-Badge */
+.items-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+/* Zustand: Keine offenen Posten (Grau) */
+.badge-empty {
+    background: #f1f5f9;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+}
+
+/* Zustand: Offene Posten (Blau & Klickbar) */
+.badge-open {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.1);
+}
+
+/* Hover-Effekt nur wenn Posten offen sind */
+.badge-open:hover {
+    background: #dbeafe;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(37, 99, 235, 0.15);
+}
+
+.badge-open i {
+    font-size: 0.8rem;
+}
+
+/* Kleine Layout-Korrektur für die Tabelle */
+.modern-table th {
+    text-align: center;
+}
+.modern-table th:first-child,
+.modern-table td:first-child {
+    text-align: left;
+}
+.modern-table th:last-child,
+.modern-table td:last-child {
+    text-align: right;
+}
