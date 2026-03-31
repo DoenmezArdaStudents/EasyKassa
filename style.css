@@ -558,3 +558,57 @@ body.is-admin #section-stats.active-section {
 .modern-table td:last-child {
     text-align: right;
 }
+
+/* Handy-Optimierung für die Verwaltungstabelle */
+@media (max-width: 767px) {
+    /* Tabellen-Header auf dem Handy verstecken */
+    .modern-table thead {
+        display: none;
+    }
+
+    .modern-table, .modern-table tbody, .modern-table tr, .modern-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .modern-table tr {
+        background: white;
+        margin-bottom: 15px;
+        border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+
+    .modern-table td {
+        border: none;
+        padding: 8px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-align: left !important; /* Überschreibt Zentrierung */
+    }
+
+    /* Label hinzufügen, damit man weiß, was was ist */
+    .modern-table td:nth-of-type(1):before { content: "Nutzer:"; font-weight: 600; color: #64748b; }
+    .modern-table td:nth-of-type(2):before { content: "Offen:"; font-weight: 600; color: #64748b; }
+    .modern-table td:nth-of-type(3):before { content: "Saldo:"; font-weight: 600; color: #64748b; }
+    
+    /* Die Aktions-Buttons ganz unten über die volle Breite */
+    .modern-table td:last-child {
+        margin-top: 10px;
+        padding-top: 15px;
+        border-top: 1px solid #f1f5f9;
+        justify-content: center;
+        gap: 30px; /* Viel Platz für die Daumen */
+    }
+
+    .btn-pay i, .btn-delete i {
+        font-size: 2rem !important; /* Richtig große Icons für Touch */
+    }
+
+    .items-badge {
+        padding: 10px 20px; /* Größeres Badge zum besseren Tippen */
+        font-size: 1rem;
+    }
+}

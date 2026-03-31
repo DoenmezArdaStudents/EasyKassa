@@ -236,29 +236,32 @@ function sync() {
                     </span>`;
             }
 
+            // ... innerhalb der sync() Funktion im Loop:
             return `
                 <tr>
-                    <td style="padding: 15px 10px;">
-                        <div style="font-weight:800; color:#1e293b; font-size:1rem;">${u}</div>
-                    </td>
-                    <td style="text-align: center;">
-                        ${itemsBadge}
-                    </td>
-                    <td style="text-align: right; font-weight:800; color:var(--text); font-size:1rem; padding-right:15px;">
-                        ${total.toFixed(2)} €
+                    <td>
+                        <div style="font-weight:800; color:#1e293b; font-size:1.1rem;">${u}</div>
                     </td>
                     <td>
-                        <div class="action-buttons" style="justify-content: flex-end; gap: 10px;">
-                            <button onclick="pay('${u}')" class="btn-pay" title="Bezahlen">
-                                <i class="fas fa-check-circle" style="font-size:1.6rem;"></i>
+                        ${itemsBadge}
+                    </td>
+                    <td>
+                        <div style="font-weight:800; color:var(--primary); font-size:1.1rem;">
+                            ${total.toFixed(2)} €
+                        </div>
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button onclick="pay('${u}')" class="btn-pay" style="color:#10b981;">
+                                <i class="fas fa-check-circle"></i>
                             </button>
-                            <button onclick="removeUser('${u}')" class="btn-delete" title="Löschen">
-                                <i class="fas fa-minus-circle" style="font-size:1.6rem; opacity:0.6;"></i>
+                            <button onclick="removeUser('${u}')" class="btn-delete" style="color:#f87171;">
+                                <i class="fas fa-minus-circle"></i>
                             </button>
                         </div>
                     </td>
                 </tr>`;
-        }).join('');
+                    }).join('');
     }
 
     renderAdminBookings();
