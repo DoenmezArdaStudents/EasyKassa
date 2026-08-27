@@ -1,0 +1,13 @@
+{
+  "name": "AJ - APP",
+  "short_name": "AJ - APP",
+  "description": "Kassa & Tippspiel der Alevitischen Jugend Linz",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#faf3e7",
+  "theme_color": "#7a2b28",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

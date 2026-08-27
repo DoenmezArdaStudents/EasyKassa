@@ -2,151 +2,340 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DrinkDB Business Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>AJ - APP</title>
+    <meta name="description" content="Kassa & Tippspiel der Alevitischen Jugend Linz">
+    <meta name="theme-color" content="#7a2b28">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AJ - APP">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="favicon.svg">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,600&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    
-    <div id="user-select-modal" class="modal-overlay" style="background: rgba(0,0,0,0.8);">
-    <div class="modal-box" style="max-width: 400px; padding: 15px; border-radius: 12px;">
-        <h3 style="margin-bottom: 15px; text-align: center;">Wer bucht?</h3>
-        
-        <div id="user-selection-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
-            </div>
 
-        <button onclick="closeUserModal()" style="width: 100%; margin-top: 15px; padding: 12px; background: #64748b; color: white; border: none; border-radius: 8px; font-weight: bold;">
-            Abbrechen
-        </button>
-    </div>
-</div>
+    <div class="grain-overlay" aria-hidden="true"></div>
 
-<div id="item-details-modal" class="modal-overlay">
-    <div class="modal-box" style="max-width: 400px;">
-        <h3 id="details-user-name">Produkte von ...</h3>
-        <div id="item-list-container" style="margin-top: 15px; max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+    <div id="user-select-modal" class="modal-overlay">
+        <div class="modal-box modal-box--wide">
+            <button class="modal-close-x" onclick="closeUserModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head">
+                <span class="modal-eyebrow">Wer bucht?</span>
+                <h3 id="user-modal-item-name">Getränk auswählen</h3>
             </div>
-        <div class="modal-footer" style="margin-top: 20px;">
-            <button onclick="closeDetailsModal()" class="btn-book" style="background: #64748b; width: 100%;">Schließen</button>
+            <div class="modal-search">
+                <i class="fas fa-magnifying-glass"></i>
+                <input type="text" id="user-search-input" placeholder="Name suchen…" oninput="filterUserModal(this.value)" autocomplete="off">
+            </div>
+            <div id="user-selection-list" class="user-tile-grid"></div>
         </div>
     </div>
-</div>
+
+    <div id="item-details-modal" class="modal-overlay">
+        <div class="modal-box modal-box--wide">
+            <button class="modal-close-x" onclick="closeDetailsModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head">
+                <span class="modal-eyebrow">Korrektur</span>
+                <h3 id="details-user-name">Produkte von …</h3>
+            </div>
+            <div id="item-list-container" class="detail-list"></div>
+        </div>
+    </div>
+
+    <div id="admin-login-modal" class="modal-overlay">
+        <div class="modal-box modal-box--keypad">
+            <button class="modal-close-x" onclick="cancelAdminAuth()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="keypad-tulip"><svg viewBox="0 0 64 64"><use href="#tulip-glyph"></use></svg></div>
+            <div class="modal-head modal-head--center">
+                <span class="modal-eyebrow">Admin-Zugang</span>
+                <h3>PIN eingeben</h3>
+            </div>
+            <div class="pin-dots" id="pin-dots"></div>
+            <p id="pin-error" class="pin-error">Falscher PIN – bitte erneut versuchen</p>
+            <div class="keypad" id="admin-keypad"></div>
+        </div>
+    </div>
+
+    <div id="tip-entry-modal" class="modal-overlay">
+        <div class="modal-box modal-box--wide">
+            <button class="modal-close-x" onclick="closeTipEntryModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head modal-head--center">
+                <span class="modal-eyebrow" id="tip-entry-eyebrow">Dein Tipp</span>
+                <h3 id="tip-entry-title">Team A vs Team B</h3>
+            </div>
+            <div class="tip-score-row">
+                <div class="stepper">
+                    <button onclick="stepTip('A',-1)" aria-label="weniger"><i class="fas fa-minus"></i></button>
+                    <span id="tip-score-a">0</span>
+                    <button onclick="stepTip('A',1)" aria-label="mehr"><i class="fas fa-plus"></i></button>
+                </div>
+                <span class="tip-score-sep">:</span>
+                <div class="stepper">
+                    <button onclick="stepTip('B',-1)" aria-label="weniger"><i class="fas fa-minus"></i></button>
+                    <span id="tip-score-b">0</span>
+                    <button onclick="stepTip('B',1)" aria-label="mehr"><i class="fas fa-plus"></i></button>
+                </div>
+            </div>
+            <label class="tip-label">Torschütze (1x tippen)</label>
+            <input type="text" id="tip-scorer-input" class="extra-desc-input" list="scorer-suggestions" placeholder="Name des Torschützen" autocomplete="off">
+            <datalist id="scorer-suggestions"></datalist>
+            <button class="btn-confirm-extra" id="tip-save-btn" onclick="saveTip()"><i class="fas fa-check"></i> Tipp speichern</button>
+            <p class="tip-locked-note" id="tip-locked-note">🔒 Dieses Spiel läuft bereits – der Tipp ist gesperrt.</p>
+        </div>
+    </div>
+
+    <div id="goal-modal" class="modal-overlay">
+        <div class="modal-box modal-box--keypad">
+            <button class="modal-close-x" onclick="closeGoalModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head modal-head--center">
+                <span class="modal-eyebrow">Live-Tor eintragen</span>
+                <h3 id="goal-modal-team">Team</h3>
+            </div>
+            <input type="text" id="goal-player-input" class="extra-desc-input" list="scorer-suggestions" placeholder="Name des Torschützen" autocomplete="off">
+            <input type="number" id="goal-minute-input" class="extra-desc-input" placeholder="Minute" min="0" max="130">
+            <button class="btn-confirm-extra" onclick="confirmGoal()"><i class="fas fa-futbol"></i> Tor bestätigen</button>
+        </div>
+    </div>
+
+    <div id="create-match-modal" class="modal-overlay">
+        <div class="modal-box">
+            <button class="modal-close-x" onclick="closeCreateMatchModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head modal-head--center">
+                <span class="modal-eyebrow">Neues Spiel</span>
+                <h3>Spiel anlegen</h3>
+            </div>
+            <input type="text" id="cm-teamA" class="extra-desc-input" placeholder="Team A (z.B. Fenerbahçe)" autocomplete="off">
+            <input type="text" id="cm-teamB" class="extra-desc-input" placeholder="Team B (z.B. Lyon)" autocomplete="off">
+            <input type="text" id="cm-competition" class="extra-desc-input" placeholder="Wettbewerb (z.B. Europa League)" autocomplete="off">
+            <input type="datetime-local" id="cm-kickoff" class="extra-desc-input">
+            <button class="btn-confirm-extra" onclick="confirmCreateMatch()"><i class="fas fa-check"></i> Spiel erstellen</button>
+        </div>
+    </div>
+
+    <div id="winner-modal" class="modal-overlay">
+        <div class="modal-box modal-box--wide winner-modal-box">
+            <button class="modal-close-x" onclick="closeWinnerModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="winner-trophy"><i class="fas fa-trophy"></i></div>
+            <span class="modal-eyebrow" style="display:block; text-align:center;">Endstand</span>
+            <h3 id="winner-headline" style="text-align:center;">Team A 0 : 0 Team B</h3>
+            <div id="winner-names" class="winner-chip-row"></div>
+            <div class="table-scroll">
+                <table class="modern-table" id="winner-recap-table">
+                    <thead><tr><th>Name</th><th>Tipp</th><th>Ergebnis</th><th>Torschütze</th></tr></thead>
+                    <tbody id="winner-recap-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="extra-modal" class="modal-overlay">
+        <div class="modal-box modal-box--keypad">
+            <button class="modal-close-x" onclick="closeExtraModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head modal-head--center">
+                <span class="modal-eyebrow">Extra-Buchung</span>
+                <h3>Betrag eingeben</h3>
+            </div>
+            <input type="text" id="modal-extra-desc" class="extra-desc-input" placeholder="Bezeichnung (z.B. Kuchen)" autocomplete="off">
+            <div class="extra-amount-display"><span id="extra-amount-value">0,00</span> €</div>
+            <div class="keypad" id="extra-keypad"></div>
+            <button class="btn-confirm-extra" onclick="confirmExtra()"><i class="fas fa-check"></i> Weiter</button>
+        </div>
+    </div>
+
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <defs>
+            <symbol id="tulip-glyph" viewBox="0 0 64 64">
+                <path d="M32 6c-3 6-11 9-11 18 0 6.5 4.9 10.8 11 10.8S43 30.5 43 24c0-9-8-12-11-18z" />
+                <path d="M32 6c-6 3-16 2-19 9 3 7 11 9.5 15 6.2" />
+                <path d="M32 6c6 3 16 2 19 9-3 7-11 9.5-15 6.2" />
+                <path d="M32 34.5V54" stroke-linecap="round"/>
+                <path d="M32 42c-4-1-7-5-14-4" stroke-linecap="round" fill="none"/>
+                <path d="M32 48c4-1 7-5 14-4" stroke-linecap="round" fill="none"/>
+            </symbol>
+            <symbol id="icon-bottle" viewBox="0 0 100 160">
+                <path d="M40 8h20v18l8 10v104a10 10 0 0 1-10 10H42a10 10 0 0 1-10-10V36l8-10z"/>
+            </symbol>
+            <symbol id="icon-can" viewBox="0 0 100 160">
+                <rect x="14" y="14" width="72" height="134" rx="14"/>
+            </symbol>
+            <symbol id="icon-glass" viewBox="0 0 100 160">
+                <path d="M22 16h56l-9 128a10 10 0 0 1-10 9H41a10 10 0 0 1-10-9z"/>
+            </symbol>
+        </defs>
+    </svg>
 
     <aside class="sidebar">
-            <div class="logo" onclick="handleLogoClick()" style="cursor: pointer;">
-                <i class="fas fa-wallet"></i> <span>Drink<b>DB</b></span>
-            </div>        
+        <div class="logo" onclick="handleLogoClick()" role="button" tabindex="0">
+            <span class="logo-mark"><svg viewBox="0 0 64 64"><use href="#tulip-glyph"></use></svg></span>
+            <span class="logo-text">
+                <b>AJ - APP</b>
+                <small>Alevitische Jugend Linz</small>
+            </span>
+        </div>
         <nav>
             <ul>
                 <li id="nav-kassa" class="active" onclick="showSection('kassa')">
-                    <i class="fas fa-th-large"></i> <span>Kassa</span>
+                    <i class="fas fa-shop"></i> <span>Kassa</span>
+                </li>
+                <li id="nav-wetten" onclick="showSection('wetten')">
+                    <i class="fas fa-futbol"></i> <span>Wetten</span>
                 </li>
                 <li id="nav-stats" onclick="showSection('stats')">
                     <i class="fas fa-chart-line"></i> <span>Umsatz</span>
                 </li>
                 <li id="nav-users" onclick="showSection('users')">
-                    <i class="fas fa-users-cog"></i> <span>Zahlung</span>
-                </li>
-                <li onclick="logout()" style="margin-top: 20px; color: #ef4444; border-top: 1px solid var(--border); padding-top: 15px;">
-                    <i class="fas fa-sign-out-alt"></i> <span>Abmelden</span>
+                    <i class="fas fa-users-gear"></i> <span>Zahlung</span>
                 </li>
             </ul>
         </nav>
+        <div class="sidebar-foot">
+            <div class="logout-btn" onclick="logout()">
+                <i class="fas fa-right-from-bracket"></i> <span>Abmelden</span>
+            </div>
+        </div>
     </aside>
 
     <main class="content">
         <section id="section-kassa" class="active-section">
             <div class="page-header">
-                <h1 class="terminal-text">Terminal</h1>
-                <div class="user-pill-container">
-                    <select id="active-user-select"></select>
+                <div>
+                    <span class="page-eyebrow" id="greeting-text">Willkommen</span>
+                    <h1 class="terminal-text">Terminal</h1>
+                </div>
+                <div class="header-right">
+                    <div class="live-clock" id="live-clock">--:--</div>
+                    <button class="icon-toggle icon-toggle--round" id="sound-toggle" onclick="toggleSound()" title="Ton an/aus" aria-label="Ton an/aus">
+                        <i class="fas fa-volume-high"></i>
+                    </button>
+                    <button class="icon-toggle icon-toggle--round" id="theme-toggle" onclick="toggleTheme()" title="Abend-Modus" aria-label="Abend-Modus umschalten">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <div class="user-pill-container">
+                        <select id="active-user-select"></select>
+                    </div>
                 </div>
             </div>
             <div class="drink-grid" id="drink-grid"></div>
         </section>
 
-<section id="section-stats" class="hidden-section">
-    <div class="page-header">
-        <h1>Financial Dashboard</h1>
-        <div class="date-navigator">
-            <button onclick="changeMonth(-1)"><i class="fas fa-chevron-left"></i></button>
-            <span id="current-month-display">Lade...</span>
-            <button onclick="changeMonth(1)"><i class="fas fa-chevron-right"></i></button>
-        </div>
-    </div>
-    
-    <div class="stats-grid-pro">
-        <div class="kpi-card">
-            <i class="fas fa-euro-sign icon-blue"></i>
-            <div class="kpi-data">
-                <small>Monatsumsatz</small>
-                <h2 id="month-revenue">0,00 €</h2>
-            </div>
-        </div>
-        <div class="kpi-card">
-            <i class="fas fa-vault icon-green"></i>
-            <div class="kpi-data">
-                <small>Gesamtbestand (Kasse)</small>
-                <h2 id="total-revenue">0,00 €</h2>
-            </div>
-        </div>
-        <div class="kpi-card">
-            <i class="fas fa-shopping-cart icon-purple"></i>
-            <div class="kpi-data">
-                <small>Verkäufe (Monat)</small>
-                <h2 id="month-sales-count">0</h2>
-            </div>
-        </div>
-        <div class="kpi-card">
-            <i class="fas fa-percentage icon-orange"></i>
-            <div class="kpi-data">
-                <small>Ø Warenkorb</small>
-                <h2 id="avg-sale">0,00 €</h2>
-            </div>
-        </div>
-    </div>
-
-    <div class="stats-main-row">
-        <div class="card chart-container">
-            <h3>Umsatzverlauf (6 Monate)</h3>
-            <canvas id="revenueChart"></canvas>
-        </div>
-        
-        <div class="card rank-container">
-            <h3>Top Performer</h3>
-            <div id="top-lists-content">
+        <section id="section-wetten" class="hidden-section">
+            <div class="page-header">
+                <div>
+                    <span class="page-eyebrow">Fußball</span>
+                    <h1 class="terminal-text">Wetten</h1>
                 </div>
-        </div>
-    </div>
+                <button class="btn-primary admin-only-inline" onclick="openCreateMatchModal()">
+                    <i class="fas fa-plus"></i> Neues Spiel
+                </button>
+            </div>
 
-    <div class="card">
-        <h3>Buchungsjournal (Letzte 50 Transaktionen)</h3>
-        <div class="table-scroll">
-            <table class="modern-table" id="journal-table">
-                <thead>
-                    <tr>
-                        <th>Datum</th>
-                        <th>Kunde</th>
-                        <th>Produkt</th>
-                        <th>Betrag</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="journal-body"></tbody>
-            </table>
-        </div>
-    </div>
-</section>
+            <div class="wetten-subnav">
+                <button class="subnav-btn active" id="wsub-live" onclick="showWettenTab('live')"><i class="fas fa-futbol"></i> Spiele</button>
+                <button class="subnav-btn" id="wsub-history" onclick="showWettenTab('history')"><i class="fas fa-clock-rotate-left"></i> Historie</button>
+                <button class="subnav-btn" id="wsub-board" onclick="showWettenTab('board')"><i class="fas fa-ranking-star"></i> Bestenliste</button>
+            </div>
+
+            <div id="wetten-panel-live" class="wetten-panel"></div>
+            <div id="wetten-panel-history" class="wetten-panel hidden-section"></div>
+            <div id="wetten-panel-board" class="wetten-panel hidden-section"></div>
+        </section>
+
+        <section id="section-stats" class="hidden-section">
+            <div class="page-header">
+                <div>
+                    <span class="page-eyebrow">Verwaltung</span>
+                    <h1 class="terminal-text">Umsatz</h1>
+                </div>
+                <div class="date-navigator">
+                    <button onclick="changeMonth(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span id="current-month-display">Lade...</span>
+                    <button onclick="changeMonth(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+
+            <div class="stats-grid-pro">
+                <div class="kpi-card kpi-accent-a">
+                    <i class="fas fa-sack-dollar"></i>
+                    <div class="kpi-data">
+                        <small>Monatsumsatz</small>
+                        <h2 id="month-revenue">0,00 €</h2>
+                    </div>
+                </div>
+                <div class="kpi-card kpi-accent-b">
+                    <i class="fas fa-piggy-bank"></i>
+                    <div class="kpi-data">
+                        <small>Gesamtbestand (Kasse)</small>
+                        <h2 id="total-revenue">0,00 €</h2>
+                    </div>
+                </div>
+                <div class="kpi-card kpi-accent-c">
+                    <i class="fas fa-basket-shopping"></i>
+                    <div class="kpi-data">
+                        <small>Verkäufe (Monat)</small>
+                        <h2 id="month-sales-count">0</h2>
+                    </div>
+                </div>
+                <div class="kpi-card kpi-accent-d">
+                    <i class="fas fa-scale-balanced"></i>
+                    <div class="kpi-data">
+                        <small>Ø Warenkorb</small>
+                        <h2 id="avg-sale">0,00 €</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-main-row">
+                <div class="card chart-container">
+                    <h3>Umsatzverlauf (6 Monate)</h3>
+                    <canvas id="revenueChart"></canvas>
+                </div>
+                <div class="card rank-container">
+                    <h3>Top Performer</h3>
+                    <div id="top-lists-content"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Buchungsjournal (Letzte 50 Transaktionen)</h3>
+                <div class="table-scroll">
+                    <table class="modern-table" id="journal-table">
+                        <thead>
+                            <tr>
+                                <th>Datum</th>
+                                <th>Kunde</th>
+                                <th>Produkt</th>
+                                <th>Betrag</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="journal-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
 
         <section id="section-users" class="hidden-section">
-            <h1 class="terminal-text">Verwaltung</h1>
+            <div class="page-header">
+                <div>
+                    <span class="page-eyebrow">Verwaltung</span>
+                    <h1 class="terminal-text">Mitglieder & Zahlung</h1>
+                </div>
+            </div>
             <div class="card">
                 <h3>Nutzer hinzufügen</h3>
                 <div class="input-group">
-                    <input type="text" id="new-user-name" placeholder="Name...">
-                    <button onclick="addUser()" class="btn-primary">Hinzufügen</button>
+                    <input type="text" id="new-user-name" placeholder="Name..." onkeydown="if(event.key==='Enter')addUser()">
+                    <button onclick="addUser()" class="btn-primary"><i class="fas fa-user-plus"></i> Hinzufügen</button>
                 </div>
             </div>
             <div class="card">
@@ -166,28 +355,13 @@
         </section>
     </main>
 
-    <div id="admin-login-modal" class="modal-overlay">
-        <div class="modal-box">
-            <h3>Admin PIN</h3>
-            <input type="password" id="admin-password-input" placeholder="Passwort...">
-            <div class="modal-footer">
-                <button onclick="cancelAdminAuth()" class="btn-book">Abbruch</button>
-                <button onclick="submitAdminAuth()" class="btn-book">OK</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="extra-modal" class="modal-overlay">
-        <div class="modal-box">
-            <h3>Extra Buchung</h3>
-            <input type="text" id="modal-extra-desc" placeholder="Zweck">
-            <input type="number" id="modal-extra-amount" placeholder="0.00">
-            <div class="modal-footer">
-                <button onclick="closeExtraModal()" class="btn-book">Abbruch</button>
-                <button onclick="confirmExtra()" class="btn-book">Buchen</button>
-            </div>
-        </div>
-    </div>
+    <nav class="mobile-tabbar">
+        <button id="tab-kassa" class="tab-active" onclick="showSection('kassa')"><i class="fas fa-shop"></i><span>Kassa</span></button>
+        <button id="tab-wetten" onclick="showSection('wetten')"><i class="fas fa-futbol"></i><span>Wetten</span></button>
+        <button id="tab-stats" onclick="showSection('stats')"><i class="fas fa-chart-line"></i><span>Umsatz</span></button>
+        <button id="tab-users" onclick="showSection('users')"><i class="fas fa-users-gear"></i><span>Zahlung</span></button>
+        <button onclick="handleLogoClick()"><i class="fas fa-key"></i><span>Admin</span></button>
+    </nav>
 
     <script src="script.js"></script>
 </body>
