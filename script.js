@@ -634,14 +634,17 @@ function updateStats() {
     const y = viewDate.getFullYear();
     document.getElementById('current-month-display').innerText = viewDate.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
 
-    const allTrans = [...trans, ...archive];
-    const monthlyData = allTrans.filter(t => {
+    // Umsatz zählt erst, wenn wirklich bezahlt wurde (grünes Hackerl -> pay()
+    // verschiebt den Posten von "trans" (offen) nach "archive" (bezahlt)).
+    // Offene, noch nicht bestätigte Buchungen tauchen hier bewusst nicht auf.
+    const paidTrans = archive;
+    const monthlyData = paidTrans.filter(t => {
         const d = new Date(t.date);
         return d.getMonth() === m && d.getFullYear() === y;
     });
 
     const monthRevenue = monthlyData.reduce((s, t) => s + t.price, 0);
-    const totalRevenue = allTrans.reduce((s, t) => s + t.price, 0) + revenueOffset;
+    const totalRevenue = paidTrans.reduce((s, t) => s + t.price, 0) + revenueOffset;
 
     document.getElementById('month-revenue').innerText = monthRevenue.toFixed(2) + " €";
     document.getElementById('total-revenue').innerText = totalRevenue.toFixed(2) + " €";
@@ -649,8 +652,8 @@ function updateStats() {
     document.getElementById('avg-sale').innerText = (monthlyData.length > 0 ? monthRevenue / monthlyData.length : 0).toFixed(2) + " €";
 
     renderRankings(monthlyData);
-    renderJournal(allTrans);
-    renderChart(allTrans);
+    renderJournal(paidTrans);
+    renderChart(paidTrans);
 }
 
 function renderRankings(data) {
