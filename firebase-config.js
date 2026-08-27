@@ -18,13 +18,14 @@
 // ==========================================================================
 
 const firebaseConfig = {
-    apiKey: "DEIN_API_KEY",
-    authDomain: "DEIN_PROJEKT.firebaseapp.com",
-    databaseURL: "https://DEIN_PROJEKT-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "DEIN_PROJEKT",
-    storageBucket: "DEIN_PROJEKT.appspot.com",
-    messagingSenderId: "DEINE_SENDER_ID",
-    appId: "DEINE_APP_ID"
+    apiKey: "AIzaSyAFQl0P1MsmlgBt9NFXOeACMZalnU8G0Tw",
+    authDomain: "aj-app-53f7a.firebaseapp.com",
+    databaseURL: "https://aj-app-53f7a-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "aj-app-53f7a",
+    storageBucket: "aj-app-53f7a.firebasestorage.app",
+    messagingSenderId: "557670592229",
+    appId: "1:557670592229:web:54590666ae498c65baee0c",
+    measurementId: "G-3E151CNMSV"
 };
 
 const FIREBASE_CONFIGURED = firebaseConfig.apiKey !== "DEIN_API_KEY" && !!firebaseConfig.databaseURL;
