@@ -74,7 +74,19 @@ function initFirebaseSync() {
         return;
     }
     banner.classList.remove('show');
+    setSyncStatus('offline', 'Verbinde…');
 
+    firebase.auth().signInAnonymously().catch(err => {
+        console.error('Firebase Anmeldung fehlgeschlagen:', err);
+        setSyncStatus('offline', 'Anmeldung fehlgeschlagen');
+    });
+
+    firebase.auth().onAuthStateChanged(user => {
+        if (user) attachDbListeners();
+    });
+}
+
+function attachDbListeners() {
     db.ref('.info/connected').on('value', snap => {
         setSyncStatus(snap.val() === true ? 'online' : 'offline', snap.val() === true ? 'Live verbunden' : 'Verbinde…');
     });
@@ -96,22 +108,28 @@ function setSyncStatus(state, text) {
 }
 
 // Kleine Wrapper, damit die App nicht abstürzt, solange firebase-config.js
-// noch nicht mit echten Werten befüllt ist.
+// noch nicht mit echten Werten befüllt ist, und Schreibfehler sichtbar werden.
+function handleDbError(err) {
+    console.error('Firebase Fehler:', err);
+    showBookingToast('⚠️ Speichern fehlgeschlagen – Verbindung prüfen');
+}
 function dbPush(path, value) {
     if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return; }
-    return db.ref(path).push(value);
+    const ref = db.ref(path).push(value);
+    ref.catch(handleDbError);
+    return ref;
 }
 function dbSet(path, value) {
     if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return; }
-    return db.ref(path).set(value);
+    return db.ref(path).set(value).catch(handleDbError);
 }
 function dbUpdate(path, value) {
     if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return; }
-    return db.ref(path).update(value);
+    return db.ref(path).update(value).catch(handleDbError);
 }
 function dbRemove(path) {
     if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return Promise.resolve(); }
-    return db.ref(path).remove();
+    return db.ref(path).remove().catch(handleDbError);
 }
 
 // --- THEME ---
@@ -481,7 +499,7 @@ function pay(name) {
                 updates['kassa/archive/' + id] = { ...rest, status: 'paid' };
                 updates['kassa/trans/' + id] = null;
             });
-            if (db) db.ref().update(updates).then(() => playPayChime());
+            if (db) db.ref().update(updates).then(() => playPayChime()).catch(handleDbError);
             else console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.');
         }
     });
@@ -938,7 +956,7 @@ function deleteMatch(id) {
         const updates = {};
         updates['wetten/matches/' + id] = null;
         toDelete.forEach(p => { updates['wetten/predictions/' + p.id] = null; });
-        if (db) db.ref().update(updates);
+        if (db) db.ref().update(updates).catch(handleDbError);
         else console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.');
     });
 }

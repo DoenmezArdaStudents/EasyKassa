@@ -8,11 +8,16 @@
 // 1. https://console.firebase.google.com öffnen -> "Projekt hinzufügen"
 // 2. Im Projekt: "Build" -> "Realtime Database" -> "Datenbank erstellen"
 //    -> Standort z.B. europe-west1 -> im "Testmodus" starten
-// 3. Danach in den "Regeln"-Tab der Realtime Database wechseln und durch
-//    folgendes ersetzen (offen für Lese-/Schreibzugriff, wie der Rest der
-//    App auch keine echte Benutzer-Anmeldung hat):
-//      { "rules": { ".read": true, ".write": true } }
-// 4. Zahnrad oben links -> "Projekteinstellungen" -> runterscrollen zu
+// 3. "Build" -> "Authentication" -> "Sign-in method" -> "Anonym" aktivieren
+//    (macht Nutzer im Hintergrund unsichtbar "eingeloggt", ohne Login-UI —
+//    verhindert, dass Fremde ohne die App direkt auf die Datenbank-URL
+//    zugreifen und Daten löschen/verändern können)
+// 4. Danach im "Regeln"-Tab der Realtime Database durch folgendes ersetzen
+//    (Zugriff nur für angemeldete — auch anonym angemeldete — Clients):
+//      { "rules": { ".read": "auth != null", ".write": "auth != null" } }
+//    WICHTIG: Schritt 3 zuerst erledigen, sonst kann sich die App nicht
+//    mehr anmelden und die Regeln sperren alles aus.
+// 5. Zahnrad oben links -> "Projekteinstellungen" -> runterscrollen zu
 //    "Meine Apps" -> "</>" (Web-App hinzufügen) -> Namen vergeben
 //    -> registrieren. Der angezeigte "firebaseConfig"-Block kommt hier rein:
 // ==========================================================================
