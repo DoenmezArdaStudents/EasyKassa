@@ -652,3 +652,26 @@ body:not(.admin-logged-in) #tab-stats { display: none; }
     .match-teams { gap: 4px; }
     .team-block span { font-size: .8rem; }
 }
+
+/* ==========================================================================
+   DB CONNECTION STATUS
+   ========================================================================== */
+
+.db-warning-banner {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; z-index: 3000;
+    background: var(--gold); color: #2a1c16; text-align: center; font-weight: 700;
+    font-size: .82rem; padding: 9px 16px; box-shadow: var(--shadow-sm);
+}
+.db-warning-banner.show { display: block; }
+.db-warning-banner code { background: rgba(0,0,0,0.1); padding: 1px 6px; border-radius: 5px; }
+
+.sync-status {
+    display: flex; align-items: center; gap: 7px; font-size: .78rem; font-weight: 700;
+    color: var(--ink-soft); background: var(--card); border: 1px solid var(--border);
+    padding: 9px 14px; border-radius: 14px; box-shadow: var(--shadow-sm);
+}
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-soft); flex-shrink: 0; transition: background .3s ease; }
+.sync-status.online .sync-dot { background: var(--success); box-shadow: 0 0 0 3px rgba(79,122,74,0.2); }
+.sync-status.offline .sync-dot { background: var(--danger); box-shadow: 0 0 0 3px rgba(178,59,47,0.2); }
+.sync-status.online { color: var(--success); }
+.sync-status.offline { color: var(--danger); }

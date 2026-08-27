@@ -7,10 +7,16 @@ const produkte = [
     { name: "Eiste Pfirsich", preis: 3.00, icon: "glass",  c1: "#f4a35f", c2: "#dd7a35", badge: "🍑" }
 ];
 
-let users = JSON.parse(localStorage.getItem('biz_users')) || ["Gast"];
-let trans = JSON.parse(localStorage.getItem('biz_trans')) || [];
-let archive = JSON.parse(localStorage.getItem('biz_archive')) || [];
-let revenueOffset = parseFloat(localStorage.getItem('biz_revenue_offset')) || 0;
+// Alle Daten unten (users/trans/archive/matches/predictions) kommen live aus
+// Firebase Realtime Database (siehe firebase-config.js) und werden von den
+// Listenern in initFirebaseSync() befüllt — hier nur leere Startwerte.
+let users = ["Gast"];
+let trans = [];
+let archive = [];
+let revenueOffset = 0;
+let matches = [];
+let predictions = [];
+
 let isSuperUser = localStorage.getItem('isSuperUser') === 'true';
 let soundEnabled = localStorage.getItem('aj_sound') !== 'off';
 let viewDate = new Date();
@@ -23,8 +29,6 @@ let pinBuffer = "";
 let extraAmountStr = "0";
 let personPickerCallback = null;
 
-let matches = JSON.parse(localStorage.getItem('aj_matches')) || [];
-let predictions = JSON.parse(localStorage.getItem('aj_predictions')) || [];
 let currentWettenSubTab = 'live';
 let tipDraft = null;
 let goalDraft = null;
@@ -40,8 +44,74 @@ function init() {
     startClock();
     setGreeting();
     startWettenTicker();
+    initFirebaseSync();
     sync();
     syncWetten();
+}
+
+// --- FIREBASE REALTIME SYNC ---
+function snapshotToArray(snap) {
+    const val = snap.val();
+    if (!val) return [];
+    return Object.entries(val).map(([id, item]) => ({ ...item, id }));
+}
+
+function matchesSnapshotToArray(snap) {
+    const val = snap.val();
+    if (!val) return [];
+    return Object.entries(val).map(([id, m]) => ({
+        ...m,
+        id,
+        goals: m.goals ? Object.entries(m.goals).map(([gid, g]) => ({ ...g, id: gid })) : []
+    }));
+}
+
+function initFirebaseSync() {
+    const banner = document.getElementById('db-warning-banner');
+    if (!FIREBASE_CONFIGURED) {
+        banner.classList.add('show');
+        setSyncStatus('offline', 'Nicht konfiguriert');
+        return;
+    }
+    banner.classList.remove('show');
+
+    db.ref('.info/connected').on('value', snap => {
+        setSyncStatus(snap.val() === true ? 'online' : 'offline', snap.val() === true ? 'Live verbunden' : 'Verbinde…');
+    });
+
+    db.ref('kassa/users').on('value', snap => { users = snap.val() || ["Gast"]; sync(); });
+    db.ref('kassa/trans').on('value', snap => { trans = snapshotToArray(snap); sync(); });
+    db.ref('kassa/archive').on('value', snap => { archive = snapshotToArray(snap); sync(); });
+    db.ref('kassa/revenueOffset').on('value', snap => { revenueOffset = snap.val() || 0; sync(); });
+    db.ref('wetten/matches').on('value', snap => { matches = matchesSnapshotToArray(snap); syncWetten(); });
+    db.ref('wetten/predictions').on('value', snap => { predictions = snapshotToArray(snap); syncWetten(); });
+}
+
+function setSyncStatus(state, text) {
+    const el = document.getElementById('sync-status');
+    if (!el) return;
+    el.classList.remove('online', 'offline');
+    el.classList.add(state);
+    document.getElementById('sync-status-text').textContent = text;
+}
+
+// Kleine Wrapper, damit die App nicht abstürzt, solange firebase-config.js
+// noch nicht mit echten Werten befüllt ist.
+function dbPush(path, value) {
+    if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return; }
+    return db.ref(path).push(value);
+}
+function dbSet(path, value) {
+    if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return; }
+    return db.ref(path).set(value);
+}
+function dbUpdate(path, value) {
+    if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return; }
+    return db.ref(path).update(value);
+}
+function dbRemove(path) {
+    if (!db) { console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.'); return Promise.resolve(); }
+    return db.ref(path).remove();
 }
 
 // --- THEME ---
@@ -327,8 +397,7 @@ function confirmBookingForUser(userName) {
     if (!currentPendingDrink) return;
     const { name, preis } = currentPendingDrink;
 
-    trans.push({
-        id: "tx_" + Date.now(),
+    dbPush('kassa/trans', {
         person: userName,
         product: name,
         price: preis,
@@ -336,7 +405,6 @@ function confirmBookingForUser(userName) {
         status: 'open'
     });
 
-    sync();
     showBookingToast(`${name} für ${userName}`);
     fireConfetti();
     playBookChime();
@@ -351,9 +419,7 @@ function closeUserModal() {
 
 function deleteSingleItem(txId, userName) {
     if (confirm("Dieses Produkt stornieren? (Kein Einfluss auf Umsatz-Archiv)")) {
-        trans = trans.filter(t => t.id !== txId);
-        sync();
-        showItemDetails(userName);
+        dbRemove('kassa/trans/' + txId).then(() => showItemDetails(userName));
     }
 }
 
@@ -363,12 +429,7 @@ function closeDetailsModal() {
 
 // --- CORE SYSTEM (SYNC) ---
 function sync() {
-    localStorage.setItem('biz_users', JSON.stringify(users));
-    localStorage.setItem('biz_trans', JSON.stringify(trans));
-    localStorage.setItem('biz_archive', JSON.stringify(archive));
-    localStorage.setItem('biz_revenue_offset', revenueOffset);
-
-    users.sort();
+    users = [...users].sort();
     renderActiveUserSelect();
 
     const tbody = document.getElementById('user-billing-body');
@@ -414,10 +475,14 @@ function pay(name) {
         const userTrans = trans.filter(t => t.person === name);
         if (userTrans.length === 0) return;
         if (confirm(`${name} hat bezahlt?`)) {
-            userTrans.forEach(t => { t.status = 'paid'; archive.push(t); });
-            trans = trans.filter(t => t.person !== name);
-            sync();
-            playPayChime();
+            const updates = {};
+            userTrans.forEach(t => {
+                const { id, ...rest } = t;
+                updates['kassa/archive/' + id] = { ...rest, status: 'paid' };
+                updates['kassa/trans/' + id] = null;
+            });
+            if (db) db.ref().update(updates).then(() => playPayChime());
+            else console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.');
         }
     });
 }
@@ -425,8 +490,7 @@ function pay(name) {
 function removeUser(name) {
     requireAdmin(() => {
         if (confirm(`${name} löschen?`)) {
-            users = users.filter(u => u !== name);
-            sync();
+            dbSet('kassa/users', users.filter(u => u !== name));
         }
     });
 }
@@ -575,7 +639,7 @@ function changeMonth(delta) { viewDate.setMonth(viewDate.getMonth() + delta); up
 
 function addUser() {
     const n = document.getElementById('new-user-name');
-    if (n.value.trim()) { users.push(n.value.trim()); n.value = ""; sync(); }
+    if (n.value.trim()) { dbSet('kassa/users', [...users, n.value.trim()]); n.value = ""; }
 }
 
 // --- EXTRA MODAL (Ziffernblock) ---
@@ -628,8 +692,6 @@ function confirmExtra() {
 // ==========================================================================
 
 function syncWetten() {
-    localStorage.setItem('aj_matches', JSON.stringify(matches));
-    localStorage.setItem('aj_predictions', JSON.stringify(predictions));
     populateScorerSuggestions();
     const panelVisible = (tab) => document.getElementById(`wetten-panel-${tab}`) && !document.getElementById(`wetten-panel-${tab}`).classList.contains('hidden-section');
     if (panelVisible('live')) renderMatchesList();
@@ -831,15 +893,12 @@ function confirmCreateMatch() {
     const competition = document.getElementById('cm-competition').value.trim();
     const kickoff = document.getElementById('cm-kickoff').value;
     if (!teamA || !teamB || !kickoff) { alert('Bitte Team A, Team B und Anstoßzeit ausfüllen.'); return; }
-    matches.push({
-        id: 'm_' + Date.now(),
+    dbPush('wetten/matches', {
         teamA, teamB, competition,
         kickoff: new Date(kickoff).toISOString(),
         status: 'upcoming',
-        startedAt: null,
-        goals: []
+        startedAt: null
     });
-    syncWetten();
     closeCreateMatchModal();
     showBookingToast(`Spiel angelegt: ${teamA} vs ${teamB}`);
 }
@@ -848,9 +907,7 @@ function startMatch(id) {
     requireAdmin(() => {
         const match = matches.find(m => m.id === id);
         if (!match) return;
-        match.status = 'live';
-        match.startedAt = new Date().toISOString();
-        syncWetten();
+        dbUpdate('wetten/matches/' + id, { status: 'live', startedAt: new Date().toISOString() });
         showBookingToast(`Anpfiff: ${match.teamA} vs ${match.teamB}`);
     });
 }
@@ -859,8 +916,8 @@ function undoLastGoal(id) {
     requireAdmin(() => {
         const match = matches.find(m => m.id === id);
         if (!match || !match.goals.length) return;
-        match.goals.pop();
-        syncWetten();
+        const last = match.goals[match.goals.length - 1];
+        dbRemove(`wetten/matches/${id}/goals/${last.id}`);
     });
 }
 
@@ -869,8 +926,7 @@ function finishMatch(id) {
         const match = matches.find(m => m.id === id);
         if (!match) return;
         if (!confirm('Spiel wirklich beenden? Die Tipps werden jetzt ausgewertet.')) return;
-        match.status = 'finished';
-        syncWetten();
+        dbUpdate('wetten/matches/' + id, { status: 'finished' });
         openWinnerReveal(id);
     });
 }
@@ -878,9 +934,12 @@ function finishMatch(id) {
 function deleteMatch(id) {
     requireAdmin(() => {
         if (!confirm('Dieses Spiel und alle zugehörigen Tipps löschen?')) return;
-        matches = matches.filter(m => m.id !== id);
-        predictions = predictions.filter(p => p.matchId !== id);
-        syncWetten();
+        const toDelete = predictions.filter(p => p.matchId === id);
+        const updates = {};
+        updates['wetten/matches/' + id] = null;
+        toDelete.forEach(p => { updates['wetten/predictions/' + p.id] = null; });
+        if (db) db.ref().update(updates);
+        else console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.');
     });
 }
 
@@ -910,10 +969,7 @@ function confirmGoal() {
     const player = document.getElementById('goal-player-input').value.trim();
     const minute = parseInt(document.getElementById('goal-minute-input').value, 10) || 0;
     if (!player || !goalDraft) return;
-    const match = matches.find(m => m.id === goalDraft.matchId);
-    if (!match) return;
-    match.goals.push({ team: goalDraft.team, player, minute });
-    syncWetten();
+    dbPush(`wetten/matches/${goalDraft.matchId}/goals`, { team: goalDraft.team, player, minute });
     closeGoalModal();
     fireConfetti();
     playGoalChime();
@@ -968,10 +1024,10 @@ function saveTip() {
     if (!tipDraft) return;
     const scorer = document.getElementById('tip-scorer-input').value.trim();
     if (!scorer) { alert('Bitte einen Torschützen eintippen.'); return; }
-    const idx = predictions.findIndex(p => p.matchId === tipDraft.matchId && p.user === tipDraft.user);
+    const existing = predictions.find(p => p.matchId === tipDraft.matchId && p.user === tipDraft.user);
     const entry = { matchId: tipDraft.matchId, user: tipDraft.user, scoreA: tipDraft.a, scoreB: tipDraft.b, scorer, ts: Date.now() };
-    if (idx >= 0) predictions[idx] = entry; else predictions.push(entry);
-    syncWetten();
+    if (existing) dbSet('wetten/predictions/' + existing.id, entry);
+    else dbPush('wetten/predictions', entry);
     showBookingToast(`Tipp gespeichert: ${tipDraft.a}:${tipDraft.b}, ${scorer}`);
     playBookChime();
     closeTipEntryModal();

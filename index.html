@@ -21,10 +21,18 @@
 
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
 </head>
 <body>
 
     <div class="grain-overlay" aria-hidden="true"></div>
+
+    <div id="db-warning-banner" class="db-warning-banner">
+        <i class="fas fa-triangle-exclamation"></i>
+        Datenbank noch nicht verbunden – Daten werden nur lokal auf diesem Gerät gespeichert. Siehe <code>firebase-config.js</code>.
+    </div>
 
     <div id="user-select-modal" class="modal-overlay">
         <div class="modal-box modal-box--wide">
@@ -213,6 +221,9 @@
                     <h1 class="terminal-text">Terminal</h1>
                 </div>
                 <div class="header-right">
+                    <div class="sync-status" id="sync-status" title="Datenbank-Verbindung">
+                        <span class="sync-dot"></span> <span id="sync-status-text">Verbinde…</span>
+                    </div>
                     <div class="live-clock" id="live-clock">--:--</div>
                     <button class="icon-toggle icon-toggle--round" id="sound-toggle" onclick="toggleSound()" title="Ton an/aus" aria-label="Ton an/aus">
                         <i class="fas fa-volume-high"></i>
