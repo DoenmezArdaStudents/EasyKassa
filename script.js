@@ -7,10 +7,12 @@ const produkte = [
     { name: "Eiste Pfirsich", preis: 3.00, icon: "glass",  c1: "#f4a35f", c2: "#dd7a35", badge: "🍑" }
 ];
 
+const EMOJI_CHOICES = ["😀", "🔥", "⚡", "🎉", "🥇", "⚽", "🎮", "🍀", "👑", "🌟", "🐺", "🦅"];
+
 // Alle Daten unten (users/trans/archive/matches/predictions) kommen live aus
 // Firebase Realtime Database (siehe firebase-config.js) und werden von den
 // Listenern in initFirebaseSync() befüllt — hier nur leere Startwerte.
-let users = ["Gast"];
+let users = [normalizeUser("Gast")];
 let trans = [];
 let archive = [];
 let revenueOffset = 0;
@@ -50,6 +52,36 @@ function init() {
 }
 
 // --- FIREBASE REALTIME SYNC ---
+// Wandelt alte reine Namens-Strings (Altbestand) automatisch in vollwertige
+// Mitgliedsprofile um, damit nichts bricht, egal was noch in der DB liegt.
+function normalizeUser(u) {
+    if (typeof u === 'string') {
+        return { name: u, description: '', role: 'Mitglied', status: 'active', emoji: '', joinedAt: null };
+    }
+    return {
+        description: '', role: 'Mitglied', status: 'active', emoji: '', joinedAt: null,
+        ...u
+    };
+}
+
+function hashHue(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
+    return h;
+}
+
+function userAvatar(profile) {
+    if (profile.emoji) return `<span class="user-avatar" style="background:var(--paper-2)">${profile.emoji}</span>`;
+    const hue = hashHue(profile.name || '?');
+    const initials = (profile.name || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    return `<span class="user-avatar" style="background:hsl(${hue},55%,40%); color:#fff;">${initials}</span>`;
+}
+
+function roleBadge(profile) {
+    const role = profile.role || 'Mitglied';
+    return `<span class="role-badge role-${role}">${role}</span>`;
+}
+
 function snapshotToArray(snap) {
     const val = snap.val();
     if (!val) return [];
@@ -91,7 +123,7 @@ function attachDbListeners() {
         setSyncStatus(snap.val() === true ? 'online' : 'offline', snap.val() === true ? 'Live verbunden' : 'Verbinde…');
     });
 
-    db.ref('kassa/users').on('value', snap => { users = snap.val() || ["Gast"]; sync(); });
+    db.ref('kassa/users').on('value', snap => { users = (snap.val() || ["Gast"]).map(normalizeUser); sync(); });
     db.ref('kassa/trans').on('value', snap => { trans = snapshotToArray(snap); sync(); });
     db.ref('kassa/archive').on('value', snap => { archive = snapshotToArray(snap); sync(); });
     db.ref('kassa/revenueOffset').on('value', snap => { revenueOffset = snap.val() || 0; sync(); });
@@ -344,9 +376,13 @@ function openPersonPicker(promptText, callback) {
     document.getElementById('user-modal-item-name').textContent = promptText;
     const searchInput = document.getElementById('user-search-input');
     searchInput.value = "";
-    renderUserTiles(users);
+    renderUserTiles(activeUsers());
     document.getElementById('user-select-modal').style.display = 'flex';
     setTimeout(() => searchInput.focus(), 150);
+}
+
+function activeUsers() {
+    return users.filter(u => u.status !== 'inactive');
 }
 
 function renderUserTiles(list) {
@@ -356,8 +392,8 @@ function renderUserTiles(list) {
         return;
     }
     container.innerHTML = list.map(u => `
-        <div onclick="onPersonPicked('${u.replace(/'/g, "\\'")}')" class="user-grid-item">
-            <span>${u}</span>
+        <div onclick="onPersonPicked('${u.name.replace(/'/g, "\\'")}')" class="user-grid-item">
+            <span style="display:flex; align-items:center; gap:12px;">${userAvatar(u)} ${u.name}</span>
             <i class="fas fa-chevron-right"></i>
         </div>
     `).join('');
@@ -372,7 +408,8 @@ function onPersonPicked(name) {
 
 function filterUserModal(query) {
     const q = query.trim().toLowerCase();
-    renderUserTiles(q ? users.filter(u => u.toLowerCase().includes(q)) : users);
+    const list = activeUsers();
+    renderUserTiles(q ? list.filter(u => u.name.toLowerCase().includes(q)) : list);
 }
 
 function showItemDetails(userName) {
@@ -447,29 +484,49 @@ function closeDetailsModal() {
 
 // --- CORE SYSTEM (SYNC) ---
 function sync() {
-    users = [...users].sort();
+    users = [...users].sort((a, b) => a.name.localeCompare(b.name, 'de'));
     renderActiveUserSelect();
+
+    const countTag = document.getElementById('member-count-tag');
+    if (countTag) {
+        const activeCount = activeUsers().length;
+        countTag.textContent = `${activeCount} aktiv${users.length !== activeCount ? ` · ${users.length - activeCount} archiviert` : ''}`;
+    }
 
     const tbody = document.getElementById('user-billing-body');
     if (tbody) {
         tbody.innerHTML = users.map(u => {
-            const userTrans = trans.filter(t => t.person === u);
+            const userTrans = trans.filter(t => t.person === u.name);
             const total = userTrans.reduce((s, t) => s + t.price, 0);
             const count = userTrans.length;
+            const nameEsc = u.name.replace(/'/g, "\\'");
+            const inactive = u.status === 'inactive';
 
             const itemsBadge = count === 0
                 ? `<span class="items-badge badge-empty"><i class="fas fa-circle" style="font-size:0.5rem; opacity:0.5;"></i> 0</span>`
-                : `<span class="items-badge badge-open" onclick="showItemDetails('${u.replace(/'/g, "\\'")}')"><i class="fas fa-basket-shopping"></i> ${count}</span>`;
+                : `<span class="items-badge badge-open" onclick="showItemDetails('${nameEsc}')"><i class="fas fa-basket-shopping"></i> ${count}</span>`;
 
             return `
-                <tr>
-                    <td><div style="font-weight:800; font-size:1.05rem;">${u}</div></td>
+                <tr class="${inactive ? 'member-row-inactive' : ''}">
+                    <td>
+                        <div class="member-cell">
+                            ${userAvatar(u)}
+                            <div class="member-name-block">
+                                <div class="member-name-row">
+                                    <span class="member-name">${u.name}</span>
+                                    ${inactive ? `<span class="inactive-tag">Archiviert</span>` : roleBadge(u)}
+                                </div>
+                                ${u.description ? `<span class="member-note">${u.description}</span>` : ''}
+                            </div>
+                        </div>
+                    </td>
                     <td>${itemsBadge}</td>
                     <td><div style="font-weight:800; color:var(--brand); font-size:1.05rem;">${total.toFixed(2)} €</div></td>
                     <td>
                         <div class="action-buttons">
-                            <button onclick="pay('${u.replace(/'/g, "\\'")}')" class="btn-pay"><i class="fas fa-circle-check"></i></button>
-                            <button onclick="removeUser('${u.replace(/'/g, "\\'")}')" class="btn-delete"><i class="fas fa-circle-minus"></i></button>
+                            ${!inactive ? `<button onclick="pay('${nameEsc}')" class="btn-pay"><i class="fas fa-circle-check"></i></button>` : ''}
+                            <button onclick="openEditUserModal('${nameEsc}')" class="btn-edit admin-only-inline"><i class="fas fa-pen"></i></button>
+                            <button onclick="removeUser('${nameEsc}')" class="btn-delete"><i class="fas fa-circle-minus"></i></button>
                         </div>
                     </td>
                 </tr>`;
@@ -484,8 +541,9 @@ function renderActiveUserSelect() {
     const sel = document.getElementById('active-user-select');
     if (!sel) return;
     const prev = sel.value;
-    sel.innerHTML = users.map(u => `<option value="${u}">${u}</option>`).join('');
-    if (users.includes(prev)) sel.value = prev;
+    const list = activeUsers();
+    sel.innerHTML = list.map(u => `<option value="${u.name}">${u.name}</option>`).join('');
+    if (list.some(u => u.name === prev)) sel.value = prev;
 }
 
 function pay(name) {
@@ -507,8 +565,12 @@ function pay(name) {
 
 function removeUser(name) {
     requireAdmin(() => {
-        if (confirm(`${name} löschen?`)) {
-            dbSet('kassa/users', users.filter(u => u !== name));
+        const openTotal = trans.filter(t => t.person === name).reduce((s, t) => s + t.price, 0);
+        const warn = openTotal > 0
+            ? `${name} hat noch ${openTotal.toFixed(2)} € offene Posten! Trotzdem endgültig löschen? Die Buchungen bleiben in der Datenbank, tauchen aber nirgends mehr auf.`
+            : `${name} endgültig löschen?`;
+        if (confirm(warn)) {
+            dbSet('kassa/users', users.filter(u => u.name !== name));
         }
     });
 }
@@ -657,7 +719,141 @@ function changeMonth(delta) { viewDate.setMonth(viewDate.getMonth() + delta); up
 
 function addUser() {
     const n = document.getElementById('new-user-name');
-    if (n.value.trim()) { dbSet('kassa/users', [...users, n.value.trim()]); n.value = ""; }
+    const name = n.value.trim();
+    if (!name) return;
+    if (users.some(u => u.name.toLowerCase() === name.toLowerCase())) {
+        alert('Es gibt schon ein Mitglied mit diesem Namen.');
+        return;
+    }
+    dbSet('kassa/users', [...users, {
+        name, description: '', role: 'Mitglied', status: 'active', emoji: '',
+        joinedAt: new Date().toISOString()
+    }]);
+    n.value = "";
+}
+
+// --- MITGLIED BEARBEITEN (Admin) ---
+let editUserOriginalName = null;
+let editUserDraft = null;
+
+function openEditUserModal(name) {
+    requireAdmin(() => {
+        const profile = users.find(u => u.name === name);
+        if (!profile) return;
+        editUserOriginalName = name;
+        editUserDraft = { ...profile };
+
+        document.getElementById('eu-title-name').textContent = profile.name;
+        document.getElementById('eu-name').value = profile.name;
+        document.getElementById('eu-role').value = profile.role || 'Mitglied';
+        document.getElementById('eu-description').value = profile.description || '';
+        document.getElementById('eu-emoji').value = profile.emoji || '';
+        renderEmojiPicker(profile.emoji || '');
+        setEditUserStatus(profile.status === 'inactive' ? 'inactive' : 'active');
+        renderEditUserStats(name);
+
+        document.getElementById('edit-user-modal').style.display = 'flex';
+    });
+}
+
+function closeEditUserModal() {
+    document.getElementById('edit-user-modal').style.display = 'none';
+    editUserOriginalName = null;
+    editUserDraft = null;
+}
+
+function renderEmojiPicker(selected) {
+    const row = document.getElementById('eu-emoji-row');
+    row.innerHTML = EMOJI_CHOICES.map(e => `
+        <button type="button" class="${e === selected ? 'selected' : ''}" onclick="pickEmoji('${e}')">${e}</button>
+    `).join('');
+}
+
+function pickEmoji(e) {
+    const input = document.getElementById('eu-emoji');
+    input.value = input.value === e ? '' : e;
+    renderEmojiPicker(input.value);
+}
+
+function setEditUserStatus(status) {
+    if (editUserDraft) editUserDraft.status = status;
+    document.getElementById('eu-status-active').classList.toggle('selected', status === 'active');
+    document.getElementById('eu-status-inactive').classList.toggle('selected', status === 'inactive');
+}
+
+function userStats(name) {
+    const allTrans = [...trans, ...archive].filter(t => t.person === name);
+    const totalSpent = allTrans.reduce((s, t) => s + t.price, 0);
+    const tipCount = predictions.filter(p => p.user === name).length;
+    let wins = 0;
+    matches.filter(m => m.status === 'finished').forEach(match => {
+        const s = matchScore(match);
+        const pred = predictions.find(p => p.matchId === match.id && p.user === name);
+        if (!pred) return;
+        const resultOk = pred.scoreA === s.a && pred.scoreB === s.b;
+        const scorerOk = match.goals.some(g => g.player.trim().toLowerCase() === pred.scorer.trim().toLowerCase());
+        if (resultOk && scorerOk) wins++;
+    });
+    return { totalSpent, bookingCount: allTrans.length, tipCount, wins };
+}
+
+function renderEditUserStats(name) {
+    const s = userStats(name);
+    document.getElementById('eu-stats-row').innerHTML = `
+        <div class="eu-stat"><small>Ausgegeben</small><b>${s.totalSpent.toFixed(2)} €</b></div>
+        <div class="eu-stat"><small>Buchungen</small><b>${s.bookingCount}</b></div>
+        <div class="eu-stat"><small>Wett-Tipps</small><b>${s.tipCount}</b></div>
+        <div class="eu-stat"><small>Volltreffer 🏆</small><b>${s.wins}</b></div>
+    `;
+}
+
+function saveEditUser() {
+    if (!editUserOriginalName) return;
+    const newName = document.getElementById('eu-name').value.trim();
+    if (!newName) { alert('Name darf nicht leer sein.'); return; }
+    const renamed = newName !== editUserOriginalName;
+    if (renamed && users.some(u => u.name.toLowerCase() === newName.toLowerCase())) {
+        alert('Es gibt schon ein Mitglied mit diesem Namen.');
+        return;
+    }
+
+    const updatedProfile = {
+        ...editUserDraft,
+        name: newName,
+        role: document.getElementById('eu-role').value,
+        description: document.getElementById('eu-description').value.trim(),
+        emoji: document.getElementById('eu-emoji').value.trim()
+    };
+
+    const newUsersList = users.map(u => u.name === editUserOriginalName ? updatedProfile : u);
+
+    if (renamed) {
+        if (!confirm(`Name wirklich zu "${newName}" ändern? Alle bisherigen Buchungen und Tipps von "${editUserOriginalName}" werden mit umbenannt, damit die Historie erhalten bleibt.`)) return;
+        const updates = { 'kassa/users': newUsersList };
+        trans.filter(t => t.person === editUserOriginalName).forEach(t => { updates['kassa/trans/' + t.id + '/person'] = newName; });
+        archive.filter(t => t.person === editUserOriginalName).forEach(t => { updates['kassa/archive/' + t.id + '/person'] = newName; });
+        predictions.filter(p => p.user === editUserOriginalName).forEach(p => { updates['wetten/predictions/' + p.id + '/user'] = newName; });
+        if (db) db.ref().update(updates).catch(handleDbError);
+        else console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.');
+    } else {
+        dbSet('kassa/users', newUsersList);
+    }
+
+    showBookingToast(`Profil gespeichert: ${newName}`);
+    closeEditUserModal();
+}
+
+function deleteUserPermanently() {
+    if (!editUserOriginalName) return;
+    const name = editUserOriginalName;
+    const openTotal = trans.filter(t => t.person === name).reduce((s, t) => s + t.price, 0);
+    const tipCount = predictions.filter(p => p.user === name).length;
+    let warn = `${name} unwiderruflich löschen?`;
+    if (openTotal > 0) warn += ` Achtung: noch ${openTotal.toFixed(2)} € offene Posten!`;
+    if (tipCount > 0) warn += ` ${tipCount} Wett-Tipp(s) bleiben ohne Namenszuordnung in der Historie.`;
+    if (!confirm(warn)) return;
+    dbSet('kassa/users', users.filter(u => u.name !== name));
+    closeEditUserModal();
 }
 
 // --- EXTRA MODAL (Ziffernblock) ---
@@ -758,12 +954,6 @@ function formatCountdown(ms) {
     if (days > 0) return `Anpfiff in ${days}T ${hours}Std`;
     if (hours > 0) return `Anpfiff in ${hours}Std ${mins}Min`;
     return `Anpfiff in ${mins}Min`;
-}
-
-function hashHue(str) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
-    return h;
 }
 
 function teamBadge(name) {

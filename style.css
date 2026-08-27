@@ -675,3 +675,63 @@ body:not(.admin-logged-in) #tab-stats { display: none; }
 .sync-status.offline .sync-dot { background: var(--danger); box-shadow: 0 0 0 3px rgba(178,59,47,0.2); }
 .sync-status.online { color: var(--success); }
 .sync-status.offline { color: var(--danger); }
+
+/* ==========================================================================
+   MITGLIEDER-VERWALTUNG
+   ========================================================================== */
+
+.member-count-tag {
+    display: inline-block; font-size: .72rem; font-weight: 800; color: var(--ink-soft);
+    background: var(--paper-2); border-radius: 20px; padding: 3px 10px; vertical-align: middle;
+}
+
+.member-cell { display: flex; align-items: center; gap: 12px; }
+.user-avatar {
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1rem; font-family: var(--font-display);
+    box-shadow: var(--shadow-sm);
+}
+.member-name-block { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.member-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.member-name-row .member-name { font-weight: 800; font-size: 1.05rem; }
+.member-note { font-size: .78rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+
+.role-badge { font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 3px 9px; border-radius: 20px; }
+.role-Mitglied { background: rgba(64,102,163,0.12); color: var(--info); }
+.role-Vorstand { background: rgba(201,147,47,0.16); color: var(--gold); }
+.role-Helfer { background: rgba(79,122,74,0.14); color: var(--success); }
+.role-Gast { background: var(--paper-2); color: var(--ink-soft); }
+
+.member-row-inactive { opacity: .5; }
+.inactive-tag { font-size: .66rem; font-weight: 800; color: var(--ink-soft); background: var(--paper-2); padding: 3px 9px; border-radius: 20px; }
+
+.btn-edit { color: var(--gold); }
+
+.eu-stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
+.eu-stat { background: var(--paper); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; text-align: center; }
+.eu-stat small { display: block; color: var(--ink-soft); font-size: .68rem; text-transform: uppercase; font-weight: 700; letter-spacing: .04em; margin-bottom: 3px; }
+.eu-stat b { font-family: var(--font-display); font-size: 1.1rem; color: var(--brand); }
+
+.eu-textarea { resize: vertical; min-height: 64px; text-align: left; font-family: var(--font-body); }
+
+.eu-emoji-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.eu-emoji-row button {
+    width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--border); background: var(--paper);
+    font-size: 1.2rem; cursor: pointer; transition: all .15s ease;
+}
+.eu-emoji-row button.selected { border-color: var(--gold); background: rgba(201,147,47,0.14); transform: scale(1.06); }
+
+.eu-status-toggle { display: flex; gap: 10px; margin-bottom: 18px; }
+.eu-status-toggle button {
+    flex: 1; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--paper);
+    color: var(--ink-soft); font-weight: 700; cursor: pointer; font-family: var(--font-body); transition: all .15s ease;
+}
+.eu-status-toggle button.selected.status-active { background: rgba(79,122,74,0.14); color: var(--success); border-color: var(--success); }
+.eu-status-toggle button.selected.status-inactive { background: rgba(178,59,47,0.12); color: var(--danger); border-color: var(--danger); }
+
+.eu-danger-link {
+    display: block; width: 100%; text-align: center; background: none; border: none;
+    color: var(--danger); font-weight: 700; font-size: .84rem; padding: 12px; margin-top: 6px; cursor: pointer;
+}
+.eu-danger-link:hover { text-decoration: underline; }

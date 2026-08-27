@@ -131,6 +131,45 @@
         </div>
     </div>
 
+    <div id="edit-user-modal" class="modal-overlay">
+        <div class="modal-box modal-box--wide">
+            <button class="modal-close-x" onclick="closeEditUserModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head">
+                <span class="modal-eyebrow">Mitglied bearbeiten</span>
+                <h3 id="eu-title-name">Name</h3>
+            </div>
+
+            <div class="eu-stats-row" id="eu-stats-row"></div>
+
+            <label class="tip-label">Name</label>
+            <input type="text" id="eu-name" class="extra-desc-input" placeholder="Name" autocomplete="off">
+
+            <label class="tip-label">Rolle</label>
+            <select id="eu-role" class="extra-desc-input">
+                <option value="Mitglied">Mitglied</option>
+                <option value="Vorstand">Vorstand</option>
+                <option value="Helfer">Helfer</option>
+                <option value="Gast">Gast</option>
+            </select>
+
+            <label class="tip-label">Beschreibung / Notiz</label>
+            <textarea id="eu-description" class="extra-desc-input eu-textarea" placeholder="z.B. Kassier, Allergie, seit wann dabei…" rows="3"></textarea>
+
+            <label class="tip-label">Avatar</label>
+            <div class="eu-emoji-row" id="eu-emoji-row"></div>
+            <input type="text" id="eu-emoji" class="extra-desc-input" placeholder="eigenes Emoji eintippen (optional)" maxlength="4" autocomplete="off">
+
+            <label class="tip-label">Status</label>
+            <div class="eu-status-toggle">
+                <button type="button" id="eu-status-active" class="status-active" onclick="setEditUserStatus('active')"><i class="fas fa-circle-check"></i> Aktiv</button>
+                <button type="button" id="eu-status-inactive" class="status-inactive" onclick="setEditUserStatus('inactive')"><i class="fas fa-box-archive"></i> Archiviert</button>
+            </div>
+
+            <button class="btn-confirm-extra" onclick="saveEditUser()"><i class="fas fa-check"></i> Speichern</button>
+            <button class="eu-danger-link" onclick="deleteUserPermanently()"><i class="fas fa-trash-can"></i> Mitglied endgültig löschen</button>
+        </div>
+    </div>
+
     <div id="winner-modal" class="modal-overlay">
         <div class="modal-box modal-box--wide winner-modal-box">
             <button class="modal-close-x" onclick="closeWinnerModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
@@ -351,7 +390,7 @@
                 </div>
             </div>
             <div class="card">
-                <h3>Offene Posten</h3>
+                <h3>Mitglieder <span id="member-count-tag" class="member-count-tag"></span></h3>
                 <table class="modern-table">
                     <thead><tr><th>Name</th><th>Produkte</th><th>Saldo</th><th>Aktion</th></tr></thead>
                     <tbody id="user-billing-body"></tbody>
