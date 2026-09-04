@@ -21,6 +21,7 @@
 
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -29,6 +30,7 @@
 <body>
 
     <div class="grain-overlay" aria-hidden="true"></div>
+    <div class="aurora-bg" aria-hidden="true"><span></span><span></span><span></span></div>
 
     <div id="db-warning-banner" class="db-warning-banner">
         <i class="fas fa-triangle-exclamation"></i>
@@ -47,6 +49,22 @@
                 <input type="text" id="user-search-input" placeholder="Name suchen…" oninput="filterUserModal(this.value)" autocomplete="off">
             </div>
             <div id="user-selection-list" class="user-tile-grid"></div>
+        </div>
+    </div>
+
+    <div id="game-roster-modal" class="modal-overlay">
+        <div class="modal-box modal-box--wide">
+            <button class="modal-close-x" onclick="closeGameRosterModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head">
+                <span class="modal-eyebrow">Mitspieler wählen</span>
+                <h3>Aus Mitgliedern auswählen</h3>
+            </div>
+            <div class="modal-search">
+                <i class="fas fa-magnifying-glass"></i>
+                <input type="text" id="game-roster-search-input" placeholder="Name suchen…" oninput="filterGameRosterModal(this.value)" autocomplete="off">
+            </div>
+            <div id="game-roster-selection-list" class="user-tile-grid"></div>
+            <button class="btn-confirm-extra" onclick="closeGameRosterModal()"><i class="fas fa-check"></i> Fertig</button>
         </div>
     </div>
 
@@ -141,8 +159,26 @@
 
             <div class="eu-stats-row" id="eu-stats-row"></div>
 
+            <div class="eu-photo-section">
+                <div class="eu-photo-preview" id="eu-photo-preview"></div>
+                <div class="eu-photo-actions">
+                    <label class="eu-photo-btn" for="eu-photo-file"><i class="fas fa-image"></i> Foto wählen</label>
+                    <input type="file" id="eu-photo-file" accept="image/*" style="display:none" onchange="handleEuPhotoFile(this.files[0])">
+                    <button type="button" class="eu-photo-btn" onclick="openEuCamera()"><i class="fas fa-camera"></i> Aufnehmen</button>
+                    <button type="button" class="eu-photo-btn" onclick="openAvatar3dModal()"><i class="fas fa-cube"></i> 3D-Charakter</button>
+                    <button type="button" class="eu-photo-btn eu-photo-btn--danger" id="eu-photo-remove" onclick="removeEuPhoto()"><i class="fas fa-trash-can"></i></button>
+                </div>
+                <div id="eu-camera-box" class="eu-camera-box">
+                    <video id="eu-camera-video" autoplay playsinline muted></video>
+                    <div class="eu-camera-controls">
+                        <button type="button" class="btn-confirm-extra" style="margin-top:0; width:auto; flex:1;" onclick="captureEuPhoto()"><i class="fas fa-circle-dot"></i> Aufnehmen</button>
+                        <button type="button" class="eu-danger-link" style="width:auto; padding:12px 18px;" onclick="closeEuCamera()">Abbrechen</button>
+                    </div>
+                </div>
+            </div>
+
             <label class="tip-label">Name</label>
-            <input type="text" id="eu-name" class="extra-desc-input" placeholder="Name" autocomplete="off">
+            <input type="text" id="eu-name" class="extra-desc-input" placeholder="Name" autocomplete="off" oninput="renderEuPhotoPreview()">
 
             <label class="tip-label">Rolle</label>
             <select id="eu-role" class="extra-desc-input">
@@ -183,6 +219,34 @@
                     <tbody id="winner-recap-body"></tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <div id="avatar3d-modal" class="modal-overlay">
+        <div class="modal-box modal-box--3d">
+            <button class="modal-close-x" onclick="closeAvatar3dModal()" aria-label="Schließen"><i class="fas fa-xmark"></i></button>
+            <div class="modal-head modal-head--center">
+                <span class="modal-eyebrow">Charakter-Editor</span>
+                <h3>3D-Charakter gestalten</h3>
+            </div>
+            <div class="a3d-stage" id="a3d-stage"></div>
+            <p class="game-roster-hint" style="text-align:center; margin-bottom:14px;">Zum Drehen einfach ziehen.</p>
+
+            <label class="tip-label">Hautfarbe</label>
+            <div class="a3d-swatch-row" id="a3d-skin-row"></div>
+
+            <label class="tip-label">Frisur</label>
+            <div class="ww-role-toggles" id="a3d-hairstyle-row"></div>
+
+            <label class="tip-label">Haarfarbe</label>
+            <div class="a3d-swatch-row" id="a3d-haircolor-row"></div>
+
+            <label class="tip-label">Outfit-Farbe</label>
+            <div class="a3d-swatch-row" id="a3d-outfit-row"></div>
+
+            <button type="button" class="ww-role-chip a3d-glasses-toggle" id="a3d-glasses-toggle" onclick="a3dToggleGlasses()">👓 Brille</button>
+
+            <button class="btn-confirm-extra" onclick="saveAvatar3d()"><i class="fas fa-check"></i> Charakter übernehmen</button>
         </div>
     </div>
 
@@ -237,6 +301,9 @@
                 </li>
                 <li id="nav-wetten" onclick="showSection('wetten')">
                     <i class="fas fa-futbol"></i> <span>Wetten</span>
+                </li>
+                <li id="nav-spiele" onclick="showSection('spiele')">
+                    <i class="fas fa-dice"></i> <span>Spiele</span>
                 </li>
                 <li id="nav-stats" onclick="showSection('stats')">
                     <i class="fas fa-chart-line"></i> <span>Umsatz</span>
@@ -382,6 +449,19 @@
                     <h1 class="terminal-text">Mitglieder & Zahlung</h1>
                 </div>
             </div>
+
+            <div class="card open-posten-card" id="open-posten-card">
+                <div class="open-posten-head">
+                    <h3><i class="fas fa-bolt"></i> Offene Posten</h3>
+                    <span class="open-posten-total" id="open-posten-total">0,00 €</span>
+                </div>
+                <p class="game-roster-hint">Direkt antippen, um die Person sofort abzurechnen — kein Scrollen & Suchen nötig.</p>
+                <div class="open-posten-chip-row" id="open-posten-chip-row"></div>
+                <button class="btn-primary open-posten-payall admin-only-inline" id="open-posten-payall" onclick="payAllOpen()">
+                    <i class="fas fa-circle-check"></i> Alle offenen jetzt abrechnen
+                </button>
+            </div>
+
             <div class="card">
                 <h3>Nutzer hinzufügen</h3>
                 <div class="input-group">
@@ -390,7 +470,10 @@
                 </div>
             </div>
             <div class="card">
-                <h3>Mitglieder <span id="member-count-tag" class="member-count-tag"></span></h3>
+                <h3 class="card-h3-row">
+                    <span>Mitglieder <span id="member-count-tag" class="member-count-tag"></span></span>
+                    <button class="filter-toggle-btn" id="filter-open-toggle" onclick="toggleOpenFilter()"><i class="fas fa-filter"></i> Nur Offene</button>
+                </h3>
                 <table class="modern-table">
                     <thead><tr><th>Name</th><th>Produkte</th><th>Saldo</th><th>Aktion</th></tr></thead>
                     <tbody id="user-billing-body"></tbody>
@@ -404,11 +487,62 @@
                 </table>
             </div>
         </section>
+
+        <section id="section-spiele" class="hidden-section">
+            <div class="page-header">
+                <div>
+                    <span class="page-eyebrow">Gruppenspaß</span>
+                    <h1 class="terminal-text">Spiele</h1>
+                </div>
+            </div>
+
+            <div id="spiele-panel-menu" class="spiele-panel">
+                <div class="game-grid">
+                    <div class="game-card game-card--werwolf" onclick="openGame('werwolf')">
+                        <div class="game-card-icon">🐺</div>
+                        <h3>Werwolf</h3>
+                        <p>Dorf gegen Werwölfe. Rollen verteilen, Tablet reihum geben, Moderator führt durch Nacht &amp; Tag.</p>
+                        <span class="game-card-tag">4+ Spieler</span>
+                    </div>
+                    <div class="game-card game-card--impostor" onclick="openGame('impostor')">
+                        <div class="game-card-icon">🕵️</div>
+                        <h3>Impostor</h3>
+                        <p>Alle kennen das Geheimwort — außer dem Impostor. Wer fliegt auf?</p>
+                        <span class="game-card-tag">3+ Spieler</span>
+                    </div>
+                    <div class="game-card game-card--totd" onclick="openGame('totd')">
+                        <div class="game-card-icon">🎯</div>
+                        <h3>Wahrheit oder Pflicht</h3>
+                        <p>Reihum: ehrlich antworten oder die Aufgabe wagen.</p>
+                        <span class="game-card-tag">2+ Spieler</span>
+                    </div>
+                    <div class="game-card game-card--nhn" onclick="openGame('nhn')">
+                        <div class="game-card-icon">🖐️</div>
+                        <h3>Ich hab noch nie</h3>
+                        <p>Klassiker mit Leben-Zähler pro Spieler — wer übersteht alle Runden?</p>
+                        <span class="game-card-tag">2+ Spieler</span>
+                    </div>
+                    <div class="game-card game-card--bestenliste" onclick="openGame('bestenliste')">
+                        <div class="game-card-icon">🏆</div>
+                        <h3>Bestenliste</h3>
+                        <p>Wer gewinnt bei Werwolf, Impostor &amp; Ich hab noch nie am häufigsten?</p>
+                        <span class="game-card-tag">Übersicht</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="spiele-panel-werwolf" class="spiele-panel hidden-section"></div>
+            <div id="spiele-panel-impostor" class="spiele-panel hidden-section"></div>
+            <div id="spiele-panel-totd" class="spiele-panel hidden-section"></div>
+            <div id="spiele-panel-nhn" class="spiele-panel hidden-section"></div>
+            <div id="spiele-panel-bestenliste" class="spiele-panel hidden-section"></div>
+        </section>
     </main>
 
     <nav class="mobile-tabbar">
         <button id="tab-kassa" class="tab-active" onclick="showSection('kassa')"><i class="fas fa-shop"></i><span>Kassa</span></button>
         <button id="tab-wetten" onclick="showSection('wetten')"><i class="fas fa-futbol"></i><span>Wetten</span></button>
+        <button id="tab-spiele" onclick="showSection('spiele')"><i class="fas fa-dice"></i><span>Spiele</span></button>
         <button id="tab-stats" onclick="showSection('stats')"><i class="fas fa-chart-line"></i><span>Umsatz</span></button>
         <button id="tab-users" onclick="showSection('users')"><i class="fas fa-users-gear"></i><span>Zahlung</span></button>
         <button onclick="handleLogoClick()"><i class="fas fa-key"></i><span>Admin</span></button>

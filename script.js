@@ -18,6 +18,7 @@ let archive = [];
 let revenueOffset = 0;
 let matches = [];
 let predictions = [];
+let spieleHistory = [];
 
 let isSuperUser = localStorage.getItem('isSuperUser') === 'true';
 let soundEnabled = localStorage.getItem('aj_sound') !== 'off';
@@ -35,6 +36,8 @@ let currentWettenSubTab = 'live';
 let tipDraft = null;
 let goalDraft = null;
 
+let showOnlyOpen = false;
+
 // --- CORE LOGIK ---
 function init() {
     applyStoredTheme();
@@ -46,9 +49,27 @@ function init() {
     startClock();
     setGreeting();
     startWettenTicker();
+    initRippleEffects();
     initFirebaseSync();
     sync();
     syncWetten();
+}
+
+// --- MIKRO-INTERAKTION: RIPPLE-EFFEKT AUF BUTTONS/KACHELN ---
+function initRippleEffects() {
+    document.addEventListener('click', e => {
+        const btn = e.target.closest('.btn-primary, .btn-book, .btn-confirm-extra, .open-posten-chip, .ww-player-tile, .game-card, .totd-btn-truth, .totd-btn-dare');
+        if (!btn || btn.disabled) return;
+        const rect = btn.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        const ripple = document.createElement('span');
+        ripple.className = 'ripple-effect';
+        ripple.style.width = ripple.style.height = size + 'px';
+        ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+        ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+        btn.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 620);
+    });
 }
 
 // --- FIREBASE REALTIME SYNC ---
@@ -70,11 +91,14 @@ function hashHue(str) {
     return h;
 }
 
+function avatarInitials(name) {
+    return (name || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
 function userAvatar(profile) {
+    if (profile.photo) return `<span class="user-avatar user-avatar--photo" style="background-image:url('${profile.photo}')"></span>`;
     if (profile.emoji) return `<span class="user-avatar" style="background:var(--paper-2)">${profile.emoji}</span>`;
     const hue = hashHue(profile.name || '?');
-    const initials = (profile.name || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-    return `<span class="user-avatar" style="background:hsl(${hue},55%,40%); color:#fff;">${initials}</span>`;
+    return `<span class="user-avatar" style="background:hsl(${hue},55%,40%); color:#fff;">${avatarInitials(profile.name)}</span>`;
 }
 
 function roleBadge(profile) {
@@ -129,6 +153,11 @@ function attachDbListeners() {
     db.ref('kassa/revenueOffset').on('value', snap => { revenueOffset = snap.val() || 0; sync(); });
     db.ref('wetten/matches').on('value', snap => { matches = matchesSnapshotToArray(snap); syncWetten(); });
     db.ref('wetten/predictions').on('value', snap => { predictions = snapshotToArray(snap); syncWetten(); });
+    db.ref('spiele/history').on('value', snap => { spieleHistory = snapshotToArray(snap); syncSpieleHistory(); });
+}
+
+function syncSpieleHistory() {
+    if (activeGamePanel === 'bestenliste') renderBestenliste();
 }
 
 function setSyncStatus(state, text) {
@@ -493,46 +522,8 @@ function sync() {
         countTag.textContent = `${activeCount} aktiv${users.length !== activeCount ? ` · ${users.length - activeCount} archiviert` : ''}`;
     }
 
-    const tbody = document.getElementById('user-billing-body');
-    if (tbody) {
-        tbody.innerHTML = users.map(u => {
-            const userTrans = trans.filter(t => t.person === u.name);
-            const total = userTrans.reduce((s, t) => s + t.price, 0);
-            const count = userTrans.length;
-            const nameEsc = u.name.replace(/'/g, "\\'");
-            const inactive = u.status === 'inactive';
-
-            const itemsBadge = count === 0
-                ? `<span class="items-badge badge-empty"><i class="fas fa-circle" style="font-size:0.5rem; opacity:0.5;"></i> 0</span>`
-                : `<span class="items-badge badge-open" onclick="showItemDetails('${nameEsc}')"><i class="fas fa-basket-shopping"></i> ${count}</span>`;
-
-            return `
-                <tr class="${inactive ? 'member-row-inactive' : ''}">
-                    <td>
-                        <div class="member-cell">
-                            ${userAvatar(u)}
-                            <div class="member-name-block">
-                                <div class="member-name-row">
-                                    <span class="member-name">${u.name}</span>
-                                    ${inactive ? `<span class="inactive-tag">Archiviert</span>` : roleBadge(u)}
-                                </div>
-                                ${u.description ? `<span class="member-note">${u.description}</span>` : ''}
-                            </div>
-                        </div>
-                    </td>
-                    <td>${itemsBadge}</td>
-                    <td><div style="font-weight:800; color:var(--brand); font-size:1.05rem;">${total.toFixed(2)} €</div></td>
-                    <td>
-                        <div class="action-buttons">
-                            ${!inactive ? `<button onclick="pay('${nameEsc}')" class="btn-pay"><i class="fas fa-circle-check"></i></button>` : ''}
-                            <button onclick="openEditUserModal('${nameEsc}')" class="btn-edit admin-only-inline"><i class="fas fa-pen"></i></button>
-                            <button onclick="removeUser('${nameEsc}')" class="btn-delete"><i class="fas fa-circle-minus"></i></button>
-                        </div>
-                    </td>
-                </tr>`;
-        }).join('');
-    }
-
+    renderUserBilling();
+    renderOpenPostenPanel();
     renderAdminBookings();
     if (document.getElementById('section-stats').classList.contains('active-section')) updateStats();
 }
@@ -544,6 +535,148 @@ function renderActiveUserSelect() {
     const list = activeUsers();
     sel.innerHTML = list.map(u => `<option value="${u.name}">${u.name}</option>`).join('');
     if (list.some(u => u.name === prev)) sel.value = prev;
+}
+
+function openBalanceOf(name) {
+    return trans.filter(t => t.person === name).reduce((s, t) => s + t.price, 0);
+}
+
+// --- MITGLIEDERTABELLE (mit "Nur Offene"-Filter) ---
+function renderUserBilling() {
+    const tbody = document.getElementById('user-billing-body');
+    if (!tbody) return;
+
+    const list = showOnlyOpen ? users.filter(u => openBalanceOf(u.name) > 0) : users;
+
+    if (showOnlyOpen && list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:30px; color:var(--ink-soft);"><i class="fas fa-circle-check"></i> Alle Salden sind ausgeglichen.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = list.map(u => {
+        const userTrans = trans.filter(t => t.person === u.name);
+        const total = userTrans.reduce((s, t) => s + t.price, 0);
+        const count = userTrans.length;
+        const nameEsc = u.name.replace(/'/g, "\\'");
+        const inactive = u.status === 'inactive';
+
+        const itemsBadge = count === 0
+            ? `<span class="items-badge badge-empty"><i class="fas fa-circle" style="font-size:0.5rem; opacity:0.5;"></i> 0</span>`
+            : `<span class="items-badge badge-open" onclick="showItemDetails('${nameEsc}')"><i class="fas fa-basket-shopping"></i> ${count}</span>`;
+
+        return `
+            <tr class="${inactive ? 'member-row-inactive' : ''}">
+                <td>
+                    <div class="member-cell">
+                        ${userAvatar(u)}
+                        <div class="member-name-block">
+                            <div class="member-name-row">
+                                <span class="member-name">${u.name}</span>
+                                ${inactive ? `<span class="inactive-tag">Archiviert</span>` : roleBadge(u)}
+                            </div>
+                            ${u.description ? `<span class="member-note">${u.description}</span>` : ''}
+                        </div>
+                    </div>
+                </td>
+                <td>${itemsBadge}</td>
+                <td><div style="font-weight:800; color:var(--brand); font-size:1.05rem;">${total.toFixed(2)} €</div></td>
+                <td>
+                    <div class="action-buttons">
+                        ${!inactive ? `<button onclick="pay('${nameEsc}')" class="btn-pay"><i class="fas fa-circle-check"></i></button>` : ''}
+                        <button onclick="openEditUserModal('${nameEsc}')" class="btn-edit admin-only-inline"><i class="fas fa-pen"></i></button>
+                        <button onclick="removeUser('${nameEsc}')" class="btn-delete"><i class="fas fa-circle-minus"></i></button>
+                    </div>
+                </td>
+            </tr>`;
+    }).join('');
+}
+
+function toggleOpenFilter() {
+    showOnlyOpen = !showOnlyOpen;
+    const btn = document.getElementById('filter-open-toggle');
+    if (btn) {
+        btn.classList.toggle('active', showOnlyOpen);
+        btn.innerHTML = showOnlyOpen ? '<i class="fas fa-list"></i> Alle anzeigen' : '<i class="fas fa-filter"></i> Nur Offene';
+    }
+    renderUserBilling();
+}
+
+// --- OFFENE POSTEN — SCHNELLZUGRIFF ---
+// Zeigt alle Personen mit offenem Saldo als antippbare Pills, damit man beim
+// Abkassieren nicht erst durch die ganze Mitgliederliste scrollen/suchen muss.
+function renderOpenPostenPanel() {
+    const card = document.getElementById('open-posten-card');
+    if (!card) return;
+
+    const openUsers = users
+        .map(u => ({ u, total: openBalanceOf(u.name) }))
+        .filter(x => x.total > 0)
+        .sort((a, b) => b.total - a.total);
+
+    if (openUsers.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+    card.style.display = '';
+
+    const grandTotal = openUsers.reduce((s, x) => s + x.total, 0);
+    animateNumber(document.getElementById('open-posten-total'), grandTotal, { suffix: ' €' });
+
+    document.getElementById('open-posten-chip-row').innerHTML = openUsers.map(({ u, total }) => `
+        <button class="open-posten-chip" onclick="pay('${u.name.replace(/'/g, "\\'")}')" title="Direkt abrechnen">
+            ${userAvatar(u)}
+            <span class="open-posten-chip-name">${u.name}</span>
+            <span class="open-posten-chip-amount">${total.toFixed(2)} €</span>
+        </button>
+    `).join('');
+}
+
+function payAllOpen() {
+    requireAdmin(() => {
+        const openNames = [...new Set(trans.map(t => t.person))];
+        if (openNames.length === 0) return;
+        const total = trans.reduce((s, t) => s + t.price, 0);
+        if (!confirm(`${openNames.length} Person(en) mit insgesamt ${total.toFixed(2)} € jetzt als bezahlt markieren?`)) return;
+
+        const updates = {};
+        trans.forEach(t => {
+            const { id, ...rest } = t;
+            updates['kassa/archive/' + id] = { ...rest, status: 'paid' };
+            updates['kassa/trans/' + id] = null;
+        });
+        if (db) {
+            db.ref().update(updates).then(() => {
+                fireConfetti();
+                setTimeout(fireConfetti, 250);
+                playPayChime();
+            }).catch(handleDbError);
+        } else {
+            console.warn('Firebase nicht konfiguriert – Aktion wurde nicht gespeichert.');
+        }
+    });
+}
+
+// --- ANIMIERTE ZAHLEN (Count-up) ---
+function animateNumber(el, target, opts = {}) {
+    if (!el) return;
+    const { suffix = '', decimals = 2, duration = 500 } = opts;
+    const prev = el.dataset.raw !== undefined ? parseFloat(el.dataset.raw) : 0;
+    const from = isNaN(prev) ? 0 : prev;
+    if (Math.abs(from - target) < 0.005) {
+        el.textContent = target.toFixed(decimals) + suffix;
+        el.dataset.raw = target;
+        return;
+    }
+    const startTime = performance.now();
+    function tick(now) {
+        const p = Math.min(1, (now - startTime) / duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        const val = from + (target - from) * eased;
+        el.textContent = val.toFixed(decimals) + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+        else { el.textContent = target.toFixed(decimals) + suffix; el.dataset.raw = target; }
+    }
+    requestAnimationFrame(tick);
 }
 
 function pay(name) {
@@ -646,10 +779,10 @@ function updateStats() {
     const monthRevenue = monthlyData.reduce((s, t) => s + t.price, 0);
     const totalRevenue = paidTrans.reduce((s, t) => s + t.price, 0) + revenueOffset;
 
-    document.getElementById('month-revenue').innerText = monthRevenue.toFixed(2) + " €";
-    document.getElementById('total-revenue').innerText = totalRevenue.toFixed(2) + " €";
-    document.getElementById('month-sales-count').innerText = monthlyData.length;
-    document.getElementById('avg-sale').innerText = (monthlyData.length > 0 ? monthRevenue / monthlyData.length : 0).toFixed(2) + " €";
+    animateNumber(document.getElementById('month-revenue'), monthRevenue, { suffix: ' €' });
+    animateNumber(document.getElementById('total-revenue'), totalRevenue, { suffix: ' €' });
+    animateNumber(document.getElementById('month-sales-count'), monthlyData.length, { decimals: 0 });
+    animateNumber(document.getElementById('avg-sale'), monthlyData.length > 0 ? monthRevenue / monthlyData.length : 0, { suffix: ' €' });
 
     renderRankings(monthlyData);
     renderJournal(paidTrans);
@@ -754,6 +887,7 @@ function openEditUserModal(name) {
         renderEmojiPicker(profile.emoji || '');
         setEditUserStatus(profile.status === 'inactive' ? 'inactive' : 'active');
         renderEditUserStats(name);
+        renderEuPhotoPreview();
 
         document.getElementById('edit-user-modal').style.display = 'flex';
     });
@@ -761,8 +895,307 @@ function openEditUserModal(name) {
 
 function closeEditUserModal() {
     document.getElementById('edit-user-modal').style.display = 'none';
+    closeEuCamera();
     editUserOriginalName = null;
     editUserDraft = null;
+}
+
+// --- PROFILFOTO (Upload, Kamera, Entfernen) ---
+function renderEuPhotoPreview() {
+    const el = document.getElementById('eu-photo-preview');
+    if (!el || !editUserDraft) return;
+    const nameNow = document.getElementById('eu-name').value || editUserDraft.name;
+    const emojiNow = document.getElementById('eu-emoji').value;
+    if (editUserDraft.photo) {
+        el.style.backgroundImage = `url('${editUserDraft.photo}')`;
+        el.textContent = '';
+    } else {
+        el.style.backgroundImage = '';
+        el.textContent = emojiNow || avatarInitials(nameNow);
+    }
+    const removeBtn = document.getElementById('eu-photo-remove');
+    if (removeBtn) removeBtn.style.display = editUserDraft.photo ? '' : 'none';
+}
+
+function processImageToAvatar(srcDataUrl, callback) {
+    const img = new Image();
+    img.onload = () => {
+        const size = 240;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        callback(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.src = srcDataUrl;
+}
+
+function handleEuPhotoFile(file) {
+    if (!file || !editUserDraft) return;
+    if (!file.type.startsWith('image/')) { alert('Bitte eine Bilddatei wählen.'); return; }
+    const reader = new FileReader();
+    reader.onload = e => processImageToAvatar(e.target.result, dataUrl => {
+        editUserDraft.photo = dataUrl;
+        renderEuPhotoPreview();
+    });
+    reader.readAsDataURL(file);
+    document.getElementById('eu-photo-file').value = '';
+}
+
+let euCameraStream = null;
+function openEuCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Kamerazugriff wird von diesem Browser/Gerät nicht unterstützt.');
+        return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false }).then(stream => {
+        euCameraStream = stream;
+        const video = document.getElementById('eu-camera-video');
+        video.srcObject = stream;
+        document.getElementById('eu-camera-box').classList.add('show');
+    }).catch(() => alert('Kamerazugriff wurde verweigert oder ist nicht möglich.'));
+}
+function closeEuCamera() {
+    if (euCameraStream) { euCameraStream.getTracks().forEach(t => t.stop()); euCameraStream = null; }
+    const box = document.getElementById('eu-camera-box');
+    if (box) box.classList.remove('show');
+}
+function captureEuPhoto() {
+    const video = document.getElementById('eu-camera-video');
+    if (!video.videoWidth) return;
+    const size = Math.min(video.videoWidth, video.videoHeight);
+    const sx = (video.videoWidth - size) / 2, sy = (video.videoHeight - size) / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = 240; canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(240, 0); ctx.scale(-1, 1); // gespiegelt = natürliche Selfie-Ansicht
+    ctx.drawImage(video, sx, sy, size, size, 0, 0, 240, 240);
+    editUserDraft.photo = canvas.toDataURL('image/jpeg', 0.82);
+    renderEuPhotoPreview();
+    closeEuCamera();
+}
+function removeEuPhoto() {
+    if (!editUserDraft) return;
+    editUserDraft.photo = null;
+    renderEuPhotoPreview();
+}
+
+// ==========================================================================
+// 3D-CHARAKTER-EDITOR (Three.js) — manuelle, primitiven-basierte Figur.
+// Bewusst KEINE Gesichtserkennung/-vermessung: kein Kamerabild wird
+// analysiert, nur bewusst gewählte Farben/Formen. Ergebnis wird als
+// PNG-Snapshot in profile.photo übernommen, die Auswahl selbst in
+// profile.character3d gespeichert, damit man später weiterbearbeiten kann.
+// ==========================================================================
+
+let a3dScene = null, a3dCamera = null, a3dRenderer = null, a3dGroup = null, a3dAnimId = null;
+let a3dConfig = { skin: '#f2c9a1', hairStyle: 'short', hairColor: '#3a2a1a', outfit: '#a8342c', glasses: false };
+let a3dDragging = false, a3dLastX = 0, a3dLastY = 0, a3dRotY = 0.4, a3dRotX = -0.1;
+
+const A3D_SKIN_TONES = ['#ffdfc4', '#f2c9a1', '#d9a066', '#a9714f', '#7a4a2b', '#4a2e1c'];
+const A3D_HAIR_COLORS = ['#1c1410', '#3a2a1a', '#6b4423', '#c9932f', '#d94f4f', '#e8e8e8'];
+const A3D_OUTFIT_COLORS = ['#a8342c', '#c9932f', '#5c6e4f', '#4066a3', '#7a2b6e', '#2a1c16'];
+const A3D_HAIRSTYLES = [
+    { key: 'none', label: '❌ Kahl' },
+    { key: 'short', label: '✂️ Kurz' },
+    { key: 'long', label: '💇 Lang' },
+    { key: 'mohawk', label: '🤘 Irokese' },
+    { key: 'cap', label: '🧢 Mütze' }
+];
+
+function openAvatar3dModal() {
+    if (!editUserDraft) return;
+    if (typeof THREE === 'undefined') { alert('3D-Bibliothek konnte nicht geladen werden (Internetverbindung prüfen).'); return; }
+    a3dConfig = editUserDraft.character3d
+        ? { ...editUserDraft.character3d }
+        : { skin: '#f2c9a1', hairStyle: 'short', hairColor: '#3a2a1a', outfit: '#a8342c', glasses: false };
+    document.getElementById('avatar3d-modal').style.display = 'flex';
+    renderA3dControls();
+    setTimeout(() => { initA3dScene(); rebuildA3dCharacter(); startA3dLoop(); }, 30);
+}
+function closeAvatar3dModal() {
+    document.getElementById('avatar3d-modal').style.display = 'none';
+    stopA3dLoop();
+}
+
+function renderA3dControls() {
+    document.getElementById('a3d-skin-row').innerHTML = A3D_SKIN_TONES.map(c => `
+        <button type="button" class="a3d-swatch ${a3dConfig.skin === c ? 'selected' : ''}" style="background:${c}" onclick="a3dSetConfig('skin','${c}')"></button>
+    `).join('');
+    document.getElementById('a3d-haircolor-row').innerHTML = A3D_HAIR_COLORS.map(c => `
+        <button type="button" class="a3d-swatch ${a3dConfig.hairColor === c ? 'selected' : ''}" style="background:${c}" onclick="a3dSetConfig('hairColor','${c}')"></button>
+    `).join('');
+    document.getElementById('a3d-outfit-row').innerHTML = A3D_OUTFIT_COLORS.map(c => `
+        <button type="button" class="a3d-swatch ${a3dConfig.outfit === c ? 'selected' : ''}" style="background:${c}" onclick="a3dSetConfig('outfit','${c}')"></button>
+    `).join('');
+    document.getElementById('a3d-hairstyle-row').innerHTML = A3D_HAIRSTYLES.map(h => `
+        <button type="button" class="ww-role-chip ${a3dConfig.hairStyle === h.key ? 'on' : ''}" onclick="a3dSetConfig('hairStyle','${h.key}')">${h.label}</button>
+    `).join('');
+    const glassesBtn = document.getElementById('a3d-glasses-toggle');
+    if (glassesBtn) glassesBtn.classList.toggle('on', a3dConfig.glasses);
+}
+function a3dSetConfig(key, value) {
+    a3dConfig[key] = value;
+    renderA3dControls();
+    rebuildA3dCharacter();
+}
+function a3dToggleGlasses() {
+    a3dConfig.glasses = !a3dConfig.glasses;
+    renderA3dControls();
+    rebuildA3dCharacter();
+}
+
+function initA3dScene() {
+    const container = document.getElementById('a3d-stage');
+    if (!container) return;
+    const w = container.clientWidth || 300, h = container.clientHeight || 300;
+    if (!a3dRenderer) {
+        a3dScene = new THREE.Scene();
+        a3dCamera = new THREE.PerspectiveCamera(35, w / h, 0.1, 100);
+        a3dCamera.position.set(0, 1.3, 5.2);
+        a3dCamera.lookAt(0, 1.1, 0);
+        a3dRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        container.innerHTML = '';
+        container.appendChild(a3dRenderer.domElement);
+
+        a3dScene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+        dir.position.set(3, 5, 4);
+        a3dScene.add(dir);
+        const dir2 = new THREE.DirectionalLight(0xffd9b0, 0.35);
+        dir2.position.set(-4, 2, -3);
+        a3dScene.add(dir2);
+
+        a3dGroup = new THREE.Group();
+        a3dScene.add(a3dGroup);
+
+        wireA3dDragControls(container);
+    }
+    a3dRenderer.setSize(w, h);
+    a3dCamera.aspect = w / h;
+    a3dCamera.updateProjectionMatrix();
+}
+
+function wireA3dDragControls(container) {
+    container.addEventListener('pointerdown', e => {
+        a3dDragging = true;
+        a3dLastX = e.clientX; a3dLastY = e.clientY;
+        container.setPointerCapture(e.pointerId);
+    });
+    container.addEventListener('pointermove', e => {
+        if (!a3dDragging) return;
+        const dx = e.clientX - a3dLastX, dy = e.clientY - a3dLastY;
+        a3dLastX = e.clientX; a3dLastY = e.clientY;
+        a3dRotY += dx * 0.01;
+        a3dRotX = Math.max(-0.4, Math.min(0.4, a3dRotX + dy * 0.01));
+    });
+    container.addEventListener('pointerup', () => { a3dDragging = false; });
+    container.addEventListener('pointerleave', () => { a3dDragging = false; });
+}
+
+function rebuildA3dCharacter() {
+    if (!a3dGroup) return;
+    while (a3dGroup.children.length) {
+        const obj = a3dGroup.children.pop();
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+    }
+
+    const skinMat = new THREE.MeshStandardMaterial({ color: a3dConfig.skin, roughness: 0.7 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: a3dConfig.hairColor, roughness: 0.6 });
+    const outfitMat = new THREE.MeshStandardMaterial({ color: a3dConfig.outfit, roughness: 0.55 });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 0.3 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x2a1c16, roughness: 0.6 });
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.52, 24, 24), skinMat);
+    head.position.y = 1.68;
+    a3dGroup.add(head);
+
+    [-0.19, 0.19].forEach(x => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), eyeMat);
+        eye.position.set(x, 1.7, 0.47);
+        a3dGroup.add(eye);
+    });
+
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 0.85, 16), outfitMat);
+    torso.position.y = 0.85;
+    a3dGroup.add(torso);
+
+    [-1, 1].forEach(side => {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.75, 12), skinMat);
+        arm.position.set(side * 0.52, 0.85, 0);
+        arm.rotation.z = side * 0.18;
+        a3dGroup.add(arm);
+    });
+
+    [-1, 1].forEach(side => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.12, 0.8, 12), pantsMat);
+        leg.position.set(side * 0.2, 0.02, 0);
+        a3dGroup.add(leg);
+    });
+
+    if (a3dConfig.hairStyle === 'short') {
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.54, 20, 20, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
+        cap.position.y = 1.72;
+        a3dGroup.add(cap);
+    } else if (a3dConfig.hairStyle === 'long') {
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.56, 20, 20, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
+        cap.position.y = 1.73;
+        a3dGroup.add(cap);
+        const back = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.6, 16), hairMat);
+        back.position.set(0, 1.42, -0.15);
+        a3dGroup.add(back);
+    } else if (a3dConfig.hairStyle === 'mohawk') {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.28, 0.62), hairMat);
+        strip.position.y = 2.05;
+        a3dGroup.add(strip);
+    } else if (a3dConfig.hairStyle === 'cap') {
+        const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.58, 0.3, 20), hairMat);
+        hat.position.y = 1.98;
+        a3dGroup.add(hat);
+        const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 20), hairMat);
+        brim.position.y = 1.85;
+        a3dGroup.add(brim);
+    }
+
+    if (a3dConfig.glasses) {
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a1c16, roughness: 0.3, metalness: 0.4 });
+        [-0.19, 0.19].forEach(x => {
+            const lens = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.02, 8, 20), glassMat);
+            lens.position.set(x, 1.7, 0.5);
+            a3dGroup.add(lens);
+        });
+        const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.02), glassMat);
+        bridge.position.set(0, 1.7, 0.5);
+        a3dGroup.add(bridge);
+    }
+}
+
+function startA3dLoop() {
+    stopA3dLoop();
+    function tick() {
+        if (!a3dDragging) a3dRotY += 0.003;
+        if (a3dGroup) { a3dGroup.rotation.y = a3dRotY; a3dGroup.rotation.x = a3dRotX; }
+        if (a3dRenderer && a3dScene && a3dCamera) a3dRenderer.render(a3dScene, a3dCamera);
+        a3dAnimId = requestAnimationFrame(tick);
+    }
+    tick();
+}
+function stopA3dLoop() {
+    if (a3dAnimId) cancelAnimationFrame(a3dAnimId);
+    a3dAnimId = null;
+}
+
+function saveAvatar3d() {
+    if (!editUserDraft || !a3dRenderer) return;
+    a3dRenderer.render(a3dScene, a3dCamera);
+    editUserDraft.photo = a3dRenderer.domElement.toDataURL('image/png');
+    editUserDraft.character3d = { ...a3dConfig };
+    renderEuPhotoPreview();
+    closeAvatar3dModal();
+    showBookingToast('3D-Charakter gespeichert');
 }
 
 function renderEmojiPicker(selected) {
@@ -776,6 +1209,7 @@ function pickEmoji(e) {
     const input = document.getElementById('eu-emoji');
     input.value = input.value === e ? '' : e;
     renderEmojiPicker(input.value);
+    renderEuPhotoPreview();
 }
 
 function setEditUserStatus(status) {
@@ -1281,6 +1715,782 @@ function openWinnerReveal(matchId) {
 
 function closeWinnerModal() {
     document.getElementById('winner-modal').style.display = 'none';
+}
+
+// ==========================================================================
+// SPIELE — Pass-the-Tablet Gruppenspiele
+// Rein lokal (nicht über Firebase synchronisiert) — jede Gruppe spielt auf
+// einem geteilten Tablet, das reihum weitergegeben wird. Nur die
+// Spielerliste (gamePlayers) wird im localStorage gemerkt, damit man beim
+// nächsten Treffen nicht alle Namen neu eintippen muss.
+// ==========================================================================
+
+let gamePlayers = JSON.parse(localStorage.getItem('aj_game_players') || '[]');
+let activeGamePanel = 'menu';
+
+let ww = null;   // Werwolf-Status
+let imp = null;  // Impostor-Status
+let totd = null; // Wahrheit-oder-Pflicht-Status
+let nhn = null;  // Ich-hab-noch-nie-Status
+
+const WW_ROLE_INFO = {
+    werwolf: { label: 'Werwolf', icon: '🐺', team: 'Werwölfe', desc: 'Du gehörst zu den Werwölfen. Einigt euch in der Nacht leise auf ein Opfer aus dem Dorf.' },
+    dorf: { label: 'Dorfbewohner', icon: '🧑‍🌾', team: 'Dorf', desc: 'Du bist ein einfacher Dorfbewohner. Findet gemeinsam die Werwölfe, bevor es zu spät ist!' },
+    seherin: { label: 'Seherin', icon: '🔮', team: 'Dorf', desc: 'Du darfst jede Nacht heimlich auf eine Person zeigen — der Moderator verrät dir per Nicken, ob sie ein Werwolf ist.' },
+    hexe: { label: 'Hexe', icon: '🧪', team: 'Dorf', desc: 'Du besitzt einen Heiltrank und einen Gifttrank — beide je einmal pro Spiel einsetzbar.' },
+    jaeger: { label: 'Jäger', icon: '🏹', team: 'Dorf', desc: 'Wenn du stirbst, darfst du sofort eine weitere Person mit in den Tod reißen.' },
+    amor: { label: 'Amor', icon: '💘', team: 'Dorf', desc: 'Bestimme in der ersten Nacht zwei Verliebte. Stirbt eine*r der beiden, stirbt der/die andere aus Kummer mit.' }
+};
+
+const IMPOSTOR_CATEGORIES = {
+    essen: { label: '🍔 Essen', words: ['Pizza', 'Döner', 'Sushi', 'Baklava', 'Falafel', 'Burger', 'Lahmacun', 'Pasta', 'Kebab', 'Pancake', 'Sarma', 'Köfte', 'Tiramisu', 'Popcorn', 'Suppe'] },
+    orte: { label: '🌍 Orte', words: ['Strand', 'Flughafen', 'Schule', 'Krankenhaus', 'Moschee', 'Stadion', 'Kino', 'Bibliothek', 'Zoo', 'Berg', 'Konzert', 'Friseur', 'Bäckerei', 'Bahnhof', 'Camping'] },
+    berufe: { label: '💼 Berufe', words: ['Lehrer', 'Ärztin', 'Feuerwehrmann', 'Bäcker', 'Polizistin', 'Pilot', 'Friseurin', 'Koch', 'Anwältin', 'Kellner', 'Bauarbeiter', 'Sängerin', 'Trainer', 'Kassiererin', 'Elektriker'] },
+    tiere: { label: '🐾 Tiere', words: ['Löwe', 'Wolf', 'Adler', 'Delfin', 'Elefant', 'Papagei', 'Fuchs', 'Bär', 'Pinguin', 'Tiger', 'Schlange', 'Pferd', 'Hase', 'Eule', 'Hai'] },
+    filme: { label: '🎬 Filme & Serien', words: ['Titanic', 'Avatar', 'Squid Game', 'Money Heist', 'Matrix', 'Shrek', 'Frozen', 'Joker', 'Interstellar', 'Friends', 'Dark', 'Stranger Things', 'Batman', 'Herr der Ringe', 'Star Wars'] }
+};
+
+const TRUTH_PROMPTS = [
+    'Was ist deine peinlichste Erinnerung aus der Schule?',
+    'Wen in dieser Runde würdest du am ehesten um Rat fragen?',
+    'Was war dein bisher schlechtestes Date oder Treffen?',
+    'Welche Lüge hast du als Kind erzählt und bist nie erwischt worden?',
+    'Was ist etwas, das du noch niemandem hier erzählt hast?',
+    'Wer war deine erste große Schwärmerei?',
+    'Was ist deine größte Angst?',
+    'Welche App checkst du am häufigsten, wenn dir langweilig ist?',
+    'Was würdest du an dir selbst gerne ändern?',
+    'Was ist die verrückteste Ausrede, die du je benutzt hast?',
+    'Über welches Thema regst du dich am schnellsten auf?',
+    'Was ist dein guilty pleasure?',
+    'Welche Person in der Runde kennst du am wenigsten gut?',
+    'Was war dein größter Fehltritt in einer Freundschaft?',
+    'Wann hast du das letzte Mal geweint und warum?'
+];
+const DARE_PROMPTS = [
+    'Imitiere eine Person aus der Runde, bis jemand rät, wer es ist.',
+    'Sing die erste Strophe deines Lieblingslieds.',
+    'Tanze 30 Sekunden ohne Musik, so überzeugend wie möglich.',
+    'Sprich für die nächste Runde nur in Fragen.',
+    'Mach 10 Liegestütze oder Kniebeugen.',
+    'Erzähle einen Witz — wenn niemand lacht, nochmal.',
+    'Lass dir von jemandem ein Wort geben und erkläre es 30 Sekunden, ohne das Wort selbst zu benutzen.',
+    'Tausche für 2 Minuten den Sitzplatz mit deinem Nachbarn.',
+    'Rede 1 Minute im Nachrichtensprecher-Stil über dein Frühstück heute.',
+    'Mach das peinlichste Selfie und zeig es der Runde.',
+    'Erfinde spontan ein Gedicht über die Person rechts von dir.',
+    'Balanciere einen Gegenstand 20 Sekunden auf dem Kopf.',
+    'Beantworte die nächste Frage nur mit Tierlauten.',
+    'Lass dich von der Gruppe für die nächste Runde einen Spitznamen geben — und benutze ihn.',
+    'Halte 30 Sekunden lang Augenkontakt mit deinem Nachbarn, ohne zu lachen.'
+];
+const NHN_PROMPTS = [
+    '...habe ich in der Schule geschummelt.',
+    '...habe ich jemanden heimlich verliebt beobachtet.',
+    '...bin ich in aller Öffentlichkeit hingefallen.',
+    '...habe ich ein Geheimnis nicht für mich behalten können.',
+    '...habe ich mehr als 24 Stunden nicht geschlafen.',
+    '...habe ich vorgetäuscht, krank zu sein, um nicht zur Schule/Arbeit zu müssen.',
+    '...habe ich jemandem eine Nachricht geschickt und es sofort bereut.',
+    '...bin ich ohne Ticket erwischt worden.',
+    '...habe ich bei einem Streit als Erstes nachgegeben, obwohl ich Recht hatte.',
+    '...habe ich ein Lied so oft gehört, dass ich es hassen gelernt habe.',
+    '...habe ich jemandem einen falschen Namen gesagt.',
+    '...habe ich eine ganze Serie an einem Tag durchgeschaut.',
+    '...habe ich beim Zocken laut geschrien.',
+    '...bin ich zu spät zu meiner eigenen Verabredung gekommen.',
+    '...habe ich den Geburtstag eines guten Freundes vergessen.',
+    '...habe ich heimlich das Essen von jemand anderem probiert.',
+    '...habe ich in der Öffentlichkeit laut gesungen.',
+    '...habe ich eine Prüfung ohne Lernen bestanden.',
+    '...habe ich ein Foto von mir gelöscht, weil es zu peinlich war.',
+    '...bin ich in der falschen Bahn/Bus gelandet.',
+    '...habe ich einen Streich gespielt, der nach hinten losging.',
+    '...habe ich bei einem Film geweint.',
+    '...habe ich mich für jemand anderen ausgegeben.',
+    '...habe ich mein Handy in die Toilette fallen lassen.',
+    '...habe ich jemanden angelogen, um früher gehen zu können.',
+    '...habe ich ein Rezept komplett ruiniert.',
+    '...habe ich mir etwas Peinliches im Sportunterricht geleistet.',
+    '...habe ich mich verlaufen, obwohl ich den Weg kannte.',
+    '...habe ich eine falsche Telefonnummer gewählt und lange geredet.'
+];
+
+function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function openGame(id) {
+    activeGamePanel = id;
+    ['menu', 'werwolf', 'impostor', 'totd', 'nhn', 'bestenliste'].forEach(k => {
+        document.getElementById(`spiele-panel-${k}`).classList.toggle('hidden-section', k !== id);
+    });
+    if (id === 'werwolf') renderWerwolf();
+    if (id === 'impostor') renderImpostor();
+    if (id === 'totd') renderTotd();
+    if (id === 'nhn') renderNhn();
+    if (id === 'bestenliste') renderBestenliste();
+}
+
+function backToGameMenu() {
+    activeGamePanel = 'menu';
+    ['menu', 'werwolf', 'impostor', 'totd', 'nhn', 'bestenliste'].forEach(k => {
+        document.getElementById(`spiele-panel-${k}`).classList.toggle('hidden-section', k !== 'menu');
+    });
+}
+
+// --- Gemeinsame Spieler-Roster-Komponente (für alle Spiele) ---
+function rosterEditorHtml(hint) {
+    return `
+        <div class="game-roster-card">
+            <div class="game-roster-head">
+                <h3><i class="fas fa-people-group"></i> Mitspieler</h3>
+                <span class="game-roster-hint">${hint}</span>
+            </div>
+            <div class="input-group">
+                <input type="text" id="game-player-input" placeholder="Name eintippen…" autocomplete="off" onkeydown="if(event.key==='Enter')addGamePlayer()">
+                <button class="btn-primary" onclick="addGamePlayer()"><i class="fas fa-user-plus"></i></button>
+                <button class="btn-primary" onclick="openGameRosterModal()" style="background:linear-gradient(135deg, var(--sage-light), var(--sage));"><i class="fas fa-database"></i> Aus Mitgliedern wählen</button>
+            </div>
+            <div class="game-chip-row" id="game-chip-row">${gamePlayers.length ? gamePlayers.map((n, i) => `
+                <span class="game-chip">${n} <i class="fas fa-xmark" onclick="removeGamePlayer(${i})"></i></span>
+            `).join('') : '<span class="game-chip-empty">Noch keine Spieler hinzugefügt.</span>'}</div>
+        </div>
+    `;
+}
+
+// --- Mehrfachauswahl-Modal: Mitspieler direkt aus den Firebase-Mitgliedern
+// wählen (Suche + Scrollen), statt Namen manuell einzutippen. ---
+function openGameRosterModal() {
+    const searchInput = document.getElementById('game-roster-search-input');
+    searchInput.value = '';
+    renderGameRosterTiles(activeUsers());
+    document.getElementById('game-roster-modal').style.display = 'flex';
+    setTimeout(() => searchInput.focus(), 150);
+}
+function closeGameRosterModal() {
+    document.getElementById('game-roster-modal').style.display = 'none';
+    renderActiveGamePanel();
+}
+function filterGameRosterModal(query) {
+    const q = query.trim().toLowerCase();
+    const list = activeUsers();
+    renderGameRosterTiles(q ? list.filter(u => u.name.toLowerCase().includes(q)) : list);
+}
+function renderGameRosterTiles(list) {
+    const container = document.getElementById('game-roster-selection-list');
+    if (list.length === 0) {
+        container.innerHTML = `<div class="user-tile-empty"><i class="fas fa-user-slash"></i><p>Kein Treffer.</p></div>`;
+        return;
+    }
+    container.innerHTML = list.map(u => {
+        const selected = gamePlayers.includes(u.name);
+        return `
+        <div onclick="toggleGameRosterMember('${u.name.replace(/'/g, "\\'")}')" class="user-grid-item ${selected ? 'selected' : ''}">
+            <span style="display:flex; align-items:center; gap:12px;">${userAvatar(u)} ${u.name}</span>
+            <i class="fas ${selected ? 'fa-circle-check' : 'fa-circle'}"></i>
+        </div>`;
+    }).join('');
+}
+function toggleGameRosterMember(name) {
+    const i = gamePlayers.indexOf(name);
+    if (i === -1) gamePlayers.push(name); else gamePlayers.splice(i, 1);
+    localStorage.setItem('aj_game_players', JSON.stringify(gamePlayers));
+    filterGameRosterModal(document.getElementById('game-roster-search-input').value);
+}
+function addGamePlayer() {
+    const input = document.getElementById('game-player-input');
+    const name = input.value.trim();
+    if (!name) return;
+    if (gamePlayers.some(n => n.toLowerCase() === name.toLowerCase())) { input.value = ''; return; }
+    gamePlayers.push(name);
+    localStorage.setItem('aj_game_players', JSON.stringify(gamePlayers));
+    input.value = '';
+    renderActiveGamePanel();
+    const fresh = document.getElementById('game-player-input');
+    if (fresh) fresh.focus();
+}
+function removeGamePlayer(i) {
+    gamePlayers.splice(i, 1);
+    localStorage.setItem('aj_game_players', JSON.stringify(gamePlayers));
+    renderActiveGamePanel();
+}
+function renderActiveGamePanel() {
+    if (activeGamePanel === 'werwolf') renderWerwolf();
+    else if (activeGamePanel === 'impostor') renderImpostor();
+    else if (activeGamePanel === 'totd') renderTotd();
+    else if (activeGamePanel === 'nhn') renderNhn();
+}
+
+// --- BESTENLISTE (geteilt über Firebase, spiele/history) ---
+function recordGameResult(game, players, winners) {
+    dbPush('spiele/history', { game, players, winners, date: new Date().toISOString() });
+}
+function renderBestenliste() {
+    const panel = document.getElementById('spiele-panel-bestenliste');
+    if (!panel) return;
+
+    const stats = {};
+    spieleHistory.forEach(h => {
+        (h.players || []).forEach(name => {
+            stats[name] = stats[name] || { played: 0, wins: 0 };
+            stats[name].played++;
+        });
+        (h.winners || []).forEach(name => {
+            if (stats[name]) stats[name].wins++;
+        });
+    });
+    const rows = Object.entries(stats)
+        .map(([name, s]) => ({ name, ...s }))
+        .sort((a, b) => b.wins - a.wins || b.played - a.played || a.name.localeCompare(b.name, 'de'));
+
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="game-hero game-hero--compact">
+            <span class="game-hero-icon">🏆</span>
+            <h2>Bestenliste</h2>
+            <p>Werwolf, Impostor &amp; Ich hab noch nie zählen mit — geteilt über alle Geräte.</p>
+        </div>
+        <div class="card leaderboard-card">
+            ${rows.length ? rows.map((r, i) => `
+                <div class="leaderboard-row ${i === 0 ? 'top-1' : i === 1 ? 'top-2' : i === 2 ? 'top-3' : ''}">
+                    <span class="lb-rank">${i + 1}</span>
+                    <span class="lb-name">${r.name}</span>
+                    <span class="lb-stats"><span>Runden: <b>${r.played}</b></span></span>
+                    <span class="lb-wins">${r.wins} 🏆</span>
+                </div>
+            `).join('') : `<p style="text-align:center; color:var(--ink-soft); padding:24px 10px;">Noch keine gewerteten Runden — spiel einmal Werwolf, Impostor oder Ich hab noch nie bis zum Sieg!</p>`}
+        </div>
+    `;
+}
+
+// ==========================================================================
+// WERWOLF
+// ==========================================================================
+
+function renderWerwolf() {
+    const panel = document.getElementById('spiele-panel-werwolf');
+    if (!ww || ww.phase === 'setup') return renderWwSetup(panel);
+    if (ww.phase === 'reveal') return renderWwReveal(panel);
+    return renderWwMod(panel);
+}
+
+function renderWwSetup(panel) {
+    if (!ww) ww = { phase: 'setup', config: { wolves: 1, seherin: true, hexe: false, jaeger: false, amor: false } };
+    const n = gamePlayers.length;
+    const maxWolves = Math.max(1, Math.floor(n / 3));
+    if (ww.config.wolves > maxWolves) ww.config.wolves = maxWolves;
+    const specialCount = ['seherin', 'hexe', 'jaeger', 'amor'].filter(k => ww.config[k]).length;
+    const required = ww.config.wolves + specialCount + 1;
+    const canStart = n >= 4 && n >= required;
+
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="game-hero game-hero--werwolf">
+            <span class="game-hero-icon">🐺</span>
+            <h2>Werwolf</h2>
+            <p>Dorf gegen Werwölfe — Rollen verteilen, Tablet reihum geben, dann führt der Moderator durch Nacht &amp; Tag.</p>
+        </div>
+        ${rosterEditorHtml('Mindestens 4 Spieler empfohlen.')}
+        <div class="card">
+            <h3><i class="fas fa-sliders"></i> Rollen festlegen</h3>
+            <div class="ww-config-row">
+                <span>Anzahl Werwölfe</span>
+                <div class="stepper">
+                    <button onclick="wwSetWolves(-1)" ${ww.config.wolves <= 1 ? 'disabled' : ''}><i class="fas fa-minus"></i></button>
+                    <span>${ww.config.wolves}</span>
+                    <button onclick="wwSetWolves(1)" ${ww.config.wolves >= maxWolves ? 'disabled' : ''}><i class="fas fa-plus"></i></button>
+                </div>
+            </div>
+            <div class="ww-role-toggles">
+                ${wwRoleToggle('seherin', '🔮 Seherin')}
+                ${wwRoleToggle('hexe', '🧪 Hexe')}
+                ${wwRoleToggle('jaeger', '🏹 Jäger')}
+                ${wwRoleToggle('amor', '💘 Amor')}
+            </div>
+        </div>
+        <button class="btn-confirm-extra" onclick="startWerwolf()" ${canStart ? '' : 'disabled'}><i class="fas fa-play"></i> Rollen verteilen &amp; starten</button>
+        <p class="game-setup-note">${n < 4 ? 'Mindestens 4 Spieler hinzufügen.' : (!canStart ? `Für diese Rollenauswahl werden mindestens ${required} Spieler benötigt.` : `${n} Spieler bereit — ${ww.config.wolves} Werwölfe, ${n - ww.config.wolves} Dorf-Rollen.`)}</p>
+    `;
+}
+function wwRoleToggle(key, label) {
+    return `<button type="button" class="ww-role-chip ${ww.config[key] ? 'on' : ''}" onclick="wwToggleRole('${key}')">${label}</button>`;
+}
+function wwToggleRole(key) { ww.config[key] = !ww.config[key]; renderWerwolf(); }
+function wwSetWolves(delta) {
+    const maxWolves = Math.max(1, Math.floor(gamePlayers.length / 3));
+    ww.config.wolves = Math.min(maxWolves, Math.max(1, ww.config.wolves + delta));
+    renderWerwolf();
+}
+function startWerwolf() {
+    const n = gamePlayers.length;
+    const specialCount = ['seherin', 'hexe', 'jaeger', 'amor'].filter(k => ww.config[k]).length;
+    if (n < 4 || n < ww.config.wolves + specialCount + 1) return;
+
+    const shuffledNames = shuffleArray(gamePlayers);
+    const roles = [];
+    for (let i = 0; i < ww.config.wolves; i++) roles.push('werwolf');
+    ['seherin', 'hexe', 'jaeger', 'amor'].forEach(k => { if (ww.config[k]) roles.push(k); });
+    while (roles.length < n) roles.push('dorf');
+    const shuffledRoles = shuffleArray(roles);
+
+    ww.players = shuffledNames.map((name, i) => ({ name, role: shuffledRoles[i], alive: true }));
+    ww.phase = 'reveal';
+    ww.revealIndex = 0;
+    ww.revealed = false;
+    renderWerwolf();
+}
+function renderWwReveal(panel) {
+    const p = ww.players[ww.revealIndex];
+    const info = WW_ROLE_INFO[p.role];
+    panel.innerHTML = `
+        <div class="reveal-stage">
+            <span class="reveal-progress">Spieler ${ww.revealIndex + 1} / ${ww.players.length}</span>
+            ${!ww.revealed ? `
+                <div class="reveal-pass-card">
+                    <i class="fas fa-mobile-screen-button"></i>
+                    <h2>Gib das Tablet an</h2>
+                    <div class="reveal-name">${p.name}</div>
+                    <p>Alle anderen bitte wegschauen.</p>
+                    <button class="btn-confirm-extra" onclick="wwReveal()"><i class="fas fa-eye"></i> Ich bin ${p.name} — Rolle zeigen</button>
+                </div>
+            ` : `
+                <div class="reveal-role-card team-${info.team === 'Werwölfe' ? 'wolf' : 'village'}">
+                    <div class="reveal-role-icon">${info.icon}</div>
+                    <span class="reveal-role-team">${info.team}</span>
+                    <h2>${info.label}</h2>
+                    <p>${info.desc}</p>
+                </div>
+                <button class="btn-confirm-extra" onclick="wwNextReveal()"><i class="fas fa-check"></i> Rolle gemerkt, weiter</button>
+            `}
+        </div>
+    `;
+}
+function wwReveal() { ww.revealed = true; renderWerwolf(); }
+function wwNextReveal() {
+    ww.revealIndex++;
+    ww.revealed = false;
+    if (ww.revealIndex >= ww.players.length) ww.phase = 'mod';
+    renderWerwolf();
+}
+function wwAliveCounts() {
+    const alive = ww.players.filter(p => p.alive);
+    const wolves = alive.filter(p => p.role === 'werwolf').length;
+    return { wolves, village: alive.length - wolves, alive: alive.length };
+}
+function wwWinner() {
+    const { wolves, village } = wwAliveCounts();
+    if (wolves === 0) return 'dorf';
+    if (wolves >= village) return 'werwolf';
+    return null;
+}
+function renderWwMod(panel) {
+    const { wolves, village } = wwAliveCounts();
+    const winner = wwWinner();
+    const steps = [
+        'Alle schließen die Augen.',
+        ww.config.amor ? 'Amor öffnet die Augen und wählt zwei Verliebte.' : null,
+        'Werwölfe wachen auf und einigen sich leise auf ein Opfer.',
+        ww.config.seherin ? 'Seherin wacht auf und zeigt heimlich auf eine Person — Moderator nickt oder schüttelt den Kopf.' : null,
+        ww.config.hexe ? 'Hexe wacht auf, erfährt das Opfer und entscheidet über Heil-/Gifttrank.' : null,
+        'Alle schließen wieder die Augen — es wird Tag. Moderator verkündet, wer in der Nacht gestorben ist.',
+        'Das Dorf diskutiert und stimmt ab, wer gehängt wird — dann unten markieren.'
+    ].filter(Boolean);
+
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="game-hero game-hero--werwolf game-hero--compact">
+            <span class="game-hero-icon">🌙</span>
+            <h2>Moderation</h2>
+            <p>Das Tablet bleibt jetzt beim Moderator / Spielleiter.</p>
+        </div>
+        ${winner ? `
+            <div class="game-winner-banner ${winner === 'werwolf' ? 'winner-wolf' : 'winner-village'}">
+                <i class="fas fa-trophy"></i> ${winner === 'werwolf' ? 'Die Werwölfe gewinnen! 🐺' : 'Das Dorf gewinnt! 🎉'}
+            </div>
+        ` : ''}
+        <div class="card">
+            <h3><i class="fas fa-list-check"></i> Ablauf pro Runde</h3>
+            <ol class="game-steps">${steps.map(s => `<li>${s}</li>`).join('')}</ol>
+        </div>
+        <div class="card">
+            <h3 class="card-h3-row"><span><i class="fas fa-users"></i> Spielerliste</span> <span class="member-count-tag">${village} Dorf · ${wolves} Werwölfe übrig</span></h3>
+            <div class="ww-player-grid">
+                ${ww.players.map((p, i) => `
+                    <button class="ww-player-tile ${p.alive ? '' : 'is-dead'}" onclick="wwToggleAlive(${i})">
+                        <span class="ww-player-name">${p.name}</span>
+                        <span class="ww-player-state">${p.alive ? 'Lebt' : '☠️ Tot — ' + WW_ROLE_INFO[p.role].label}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <p class="game-setup-note">Tippe auf einen Spieler, um ihn als eliminiert zu markieren (Nachtopfer oder Abstimmung).</p>
+        </div>
+        <button class="eu-danger-link" onclick="resetWerwolf()"><i class="fas fa-rotate-left"></i> Neues Spiel starten</button>
+    `;
+}
+function wwToggleAlive(i) {
+    const wasWinner = !!wwWinner();
+    ww.players[i].alive = !ww.players[i].alive;
+    const winner = wwWinner();
+    renderWerwolf();
+    if (winner && !wasWinner) {
+        fireConfetti();
+        playWinChime();
+        if (!ww.recorded) {
+            ww.recorded = true;
+            const players = ww.players.map(p => p.name);
+            const winners = ww.players.filter(p => (winner === 'werwolf' ? p.role === 'werwolf' : p.role !== 'werwolf')).map(p => p.name);
+            recordGameResult('werwolf', players, winners);
+        }
+    }
+}
+function resetWerwolf() {
+    if (!confirm('Neues Werwolf-Spiel starten? Die aktuelle Runde geht verloren.')) return;
+    ww = null;
+    renderWerwolf();
+}
+
+// ==========================================================================
+// IMPOSTOR
+// ==========================================================================
+
+function renderImpostor() {
+    const panel = document.getElementById('spiele-panel-impostor');
+    if (!imp || imp.phase === 'setup') return renderImpSetup(panel);
+    if (imp.phase === 'reveal') return renderImpReveal(panel);
+    return renderImpMod(panel);
+}
+function renderImpSetup(panel) {
+    if (!imp) imp = { phase: 'setup', category: 'essen', count: 1 };
+    const n = gamePlayers.length;
+    const maxImp = Math.max(1, Math.floor(n / 3));
+    if (imp.count > maxImp) imp.count = maxImp;
+    const canStart = n >= 3 && n > imp.count;
+
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="game-hero game-hero--impostor">
+            <span class="game-hero-icon">🕵️</span>
+            <h2>Impostor</h2>
+            <p>Alle sehen ein Geheimwort — außer dem Impostor. Durch geschicktes Fragen müsst ihr ihn enttarnen.</p>
+        </div>
+        ${rosterEditorHtml('Mindestens 3 Spieler empfohlen.')}
+        <div class="card">
+            <h3><i class="fas fa-layer-group"></i> Kategorie</h3>
+            <div class="ww-role-toggles">
+                ${Object.entries(IMPOSTOR_CATEGORIES).map(([key, c]) => `
+                    <button type="button" class="ww-role-chip ${imp.category === key ? 'on' : ''}" onclick="impSetCategory('${key}')">${c.label}</button>
+                `).join('')}
+            </div>
+            <div class="ww-config-row" style="margin-top:14px;">
+                <span>Anzahl Impostoren</span>
+                <div class="stepper">
+                    <button onclick="impSetCount(-1)" ${imp.count <= 1 ? 'disabled' : ''}><i class="fas fa-minus"></i></button>
+                    <span>${imp.count}</span>
+                    <button onclick="impSetCount(1)" ${imp.count >= maxImp ? 'disabled' : ''}><i class="fas fa-plus"></i></button>
+                </div>
+            </div>
+        </div>
+        <button class="btn-confirm-extra" onclick="startImpostor()" ${canStart ? '' : 'disabled'}><i class="fas fa-play"></i> Wort wählen &amp; starten</button>
+        <p class="game-setup-note">${n < 3 ? 'Mindestens 3 Spieler hinzufügen.' : `${n} Spieler bereit — ${imp.count} Impostor(en).`}</p>
+    `;
+}
+function impSetCategory(key) { imp.category = key; renderImpostor(); }
+function impSetCount(delta) {
+    const maxImp = Math.max(1, Math.floor(gamePlayers.length / 3));
+    imp.count = Math.min(maxImp, Math.max(1, imp.count + delta));
+    renderImpostor();
+}
+function startImpostor() {
+    const n = gamePlayers.length;
+    if (n < 3 || n <= imp.count) return;
+    const cat = IMPOSTOR_CATEGORIES[imp.category];
+    const word = cat.words[Math.floor(Math.random() * cat.words.length)];
+    const shuffled = shuffleArray(gamePlayers);
+    const impostorSet = new Set(shuffled.slice(0, imp.count));
+    imp.word = word;
+    imp.players = shuffled.map(name => ({ name, isImpostor: impostorSet.has(name), alive: true }));
+    imp.phase = 'reveal';
+    imp.revealIndex = 0;
+    imp.revealed = false;
+    renderImpostor();
+}
+function renderImpReveal(panel) {
+    const p = imp.players[imp.revealIndex];
+    panel.innerHTML = `
+        <div class="reveal-stage">
+            <span class="reveal-progress">Spieler ${imp.revealIndex + 1} / ${imp.players.length}</span>
+            ${!imp.revealed ? `
+                <div class="reveal-pass-card">
+                    <i class="fas fa-mobile-screen-button"></i>
+                    <h2>Gib das Tablet an</h2>
+                    <div class="reveal-name">${p.name}</div>
+                    <p>Alle anderen bitte wegschauen.</p>
+                    <button class="btn-confirm-extra" onclick="impReveal()"><i class="fas fa-eye"></i> Ich bin ${p.name} — anzeigen</button>
+                </div>
+            ` : `
+                <div class="reveal-role-card team-${p.isImpostor ? 'wolf' : 'village'}">
+                    <div class="reveal-role-icon">${p.isImpostor ? '🕵️' : '🔑'}</div>
+                    <span class="reveal-role-team">${p.isImpostor ? 'Impostor' : 'Geheimwort'}</span>
+                    <h2>${p.isImpostor ? 'Du bist der Impostor!' : imp.word}</h2>
+                    <p>${p.isImpostor ? 'Du kennst das Wort nicht. Hör gut zu und tu so, als wüsstest du es.' : 'Merk dir das Wort — verrate es nicht zu offensichtlich!'}</p>
+                </div>
+                <button class="btn-confirm-extra" onclick="impNextReveal()"><i class="fas fa-check"></i> Weiter</button>
+            `}
+        </div>
+    `;
+}
+function impReveal() { imp.revealed = true; renderImpostor(); }
+function impNextReveal() {
+    imp.revealIndex++;
+    imp.revealed = false;
+    if (imp.revealIndex >= imp.players.length) imp.phase = 'mod';
+    renderImpostor();
+}
+function impAliveCounts() {
+    const alive = imp.players.filter(p => p.alive);
+    const impostors = alive.filter(p => p.isImpostor).length;
+    return { impostors, others: alive.length - impostors, alive: alive.length };
+}
+function impWinner() {
+    const { impostors, others } = impAliveCounts();
+    if (impostors === 0) return 'dorf';
+    if (impostors >= others) return 'impostor';
+    return null;
+}
+function renderImpMod(panel) {
+    const winner = impWinner();
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="game-hero game-hero--impostor game-hero--compact">
+            <span class="game-hero-icon">💬</span>
+            <h2>Diskussion &amp; Abstimmung</h2>
+            <p>Reihum Hinweise zum Wort geben — wer wirkt verdächtig? Danach abstimmen und unten eliminieren.</p>
+        </div>
+        ${winner ? `
+            <div class="game-winner-banner ${winner === 'impostor' ? 'winner-wolf' : 'winner-village'}">
+                <i class="fas fa-trophy"></i> ${winner === 'impostor' ? 'Der Impostor gewinnt! 🕵️' : 'Die Gruppe gewinnt! 🎉'}
+            </div>
+        ` : ''}
+        <div class="card">
+            <h3><i class="fas fa-users"></i> Spieler</h3>
+            <div class="ww-player-grid">
+                ${imp.players.map((p, i) => `
+                    <button class="ww-player-tile ${p.alive ? '' : 'is-dead'}" onclick="impToggleAlive(${i})">
+                        <span class="ww-player-name">${p.name}</span>
+                        <span class="ww-player-state">${p.alive ? 'Dabei' : '❌ Raus — war ' + (p.isImpostor ? 'Impostor' : 'unschuldig')}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <p class="game-setup-note">Nach der Abstimmung: Tippe auf die rausgewählte Person.</p>
+        </div>
+        <div class="card">
+            <h3><i class="fas fa-key"></i> Geheimwort</h3>
+            <p style="font-weight:800; font-size:1.2rem; color:var(--brand);">${imp.word}</p>
+        </div>
+        <button class="eu-danger-link" onclick="resetImpostor()"><i class="fas fa-rotate-left"></i> Neues Spiel starten</button>
+    `;
+}
+function impToggleAlive(i) {
+    const wasWinner = !!impWinner();
+    imp.players[i].alive = !imp.players[i].alive;
+    const winner = impWinner();
+    renderImpostor();
+    if (winner && !wasWinner) {
+        fireConfetti();
+        playWinChime();
+        if (!imp.recorded) {
+            imp.recorded = true;
+            const players = imp.players.map(p => p.name);
+            const winners = imp.players.filter(p => (winner === 'impostor' ? p.isImpostor : !p.isImpostor)).map(p => p.name);
+            recordGameResult('impostor', players, winners);
+        }
+    }
+}
+function resetImpostor() {
+    if (!confirm('Neues Impostor-Spiel starten?')) return;
+    imp = null;
+    renderImpostor();
+}
+
+// ==========================================================================
+// WAHRHEIT ODER PFLICHT
+// ==========================================================================
+
+function renderTotd() {
+    const panel = document.getElementById('spiele-panel-totd');
+    if (!totd) totd = { phase: 'setup' };
+    if (totd.phase === 'setup') return renderTotdSetup(panel);
+    return renderTotdPlay(panel);
+}
+function renderTotdSetup(panel) {
+    const n = gamePlayers.length;
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="game-hero game-hero--totd">
+            <span class="game-hero-icon">🎯</span>
+            <h2>Wahrheit oder Pflicht</h2>
+            <p>Reihum entscheidet jede*r: ehrlich antworten oder die Aufgabe wagen.</p>
+        </div>
+        ${rosterEditorHtml('Mindestens 2 Spieler.')}
+        <button class="btn-confirm-extra" onclick="startTotd()" ${n >= 2 ? '' : 'disabled'}><i class="fas fa-play"></i> Runde starten</button>
+        <p class="game-setup-note">${n < 2 ? 'Mindestens 2 Spieler hinzufügen.' : `${n} Spieler bereit.`}</p>
+    `;
+}
+function startTotd() {
+    if (gamePlayers.length < 2) return;
+    totd = { phase: 'play', order: shuffleArray(gamePlayers), idx: 0, truthPool: shuffleArray(TRUTH_PROMPTS), darePool: shuffleArray(DARE_PROMPTS), current: null };
+    renderTotd();
+}
+function totdDrawPrompt(kind) {
+    const poolKey = kind === 'truth' ? 'truthPool' : 'darePool';
+    const source = kind === 'truth' ? TRUTH_PROMPTS : DARE_PROMPTS;
+    if (totd[poolKey].length === 0) totd[poolKey] = shuffleArray(source);
+    totd.current = { kind, text: totd[poolKey].pop() };
+    renderTotd();
+}
+function totdNextPlayer() {
+    totd.idx = (totd.idx + 1) % totd.order.length;
+    totd.current = null;
+    renderTotd();
+}
+function renderTotdPlay(panel) {
+    const name = totd.order[totd.idx];
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="reveal-stage">
+            <span class="reveal-progress">Runde · Spieler ${totd.idx + 1} / ${totd.order.length}</span>
+            <div class="reveal-pass-card">
+                <i class="fas fa-hand-point-up"></i>
+                <h2>${name} ist dran</h2>
+                ${!totd.current ? `
+                    <div class="totd-choice-row">
+                        <button class="btn-confirm-extra totd-btn-truth" onclick="totdDrawPrompt('truth')"><i class="fas fa-comment"></i> Wahrheit</button>
+                        <button class="btn-confirm-extra totd-btn-dare" onclick="totdDrawPrompt('dare')"><i class="fas fa-bolt"></i> Pflicht</button>
+                    </div>
+                ` : `
+                    <div class="reveal-role-card team-${totd.current.kind === 'dare' ? 'wolf' : 'village'}">
+                        <div class="reveal-role-icon">${totd.current.kind === 'dare' ? '⚡' : '💬'}</div>
+                        <p style="font-size:1.1rem; font-weight:700;">${totd.current.text}</p>
+                    </div>
+                    <button class="btn-confirm-extra" onclick="totdNextPlayer()"><i class="fas fa-forward"></i> Nächste Person</button>
+                `}
+            </div>
+        </div>
+        <button class="eu-danger-link" onclick="resetTotd()"><i class="fas fa-rotate-left"></i> Spiel beenden</button>
+    `;
+}
+function resetTotd() {
+    if (!confirm('Wahrheit-oder-Pflicht-Runde beenden?')) return;
+    totd = { phase: 'setup' };
+    renderTotd();
+}
+
+// ==========================================================================
+// ICH HAB NOCH NIE
+// ==========================================================================
+
+function renderNhn() {
+    const panel = document.getElementById('spiele-panel-nhn');
+    if (!nhn) nhn = { phase: 'setup', lives: 5 };
+    if (nhn.phase === 'setup') return renderNhnSetup(panel);
+    return renderNhnPlay(panel);
+}
+function renderNhnSetup(panel) {
+    const n = gamePlayers.length;
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        <div class="game-hero game-hero--nhn">
+            <span class="game-hero-icon">🖐️</span>
+            <h2>Ich hab noch nie</h2>
+            <p>Wer die Aussage schon erlebt hat, verliert ein Leben. Wer übersteht alle Runden?</p>
+        </div>
+        ${rosterEditorHtml('Mindestens 2 Spieler.')}
+        <div class="card">
+            <h3><i class="fas fa-heart"></i> Leben pro Spieler</h3>
+            <div class="ww-config-row">
+                <span>Startleben</span>
+                <div class="stepper">
+                    <button onclick="nhnSetLives(-1)" ${nhn.lives <= 1 ? 'disabled' : ''}><i class="fas fa-minus"></i></button>
+                    <span>${nhn.lives}</span>
+                    <button onclick="nhnSetLives(1)" ${nhn.lives >= 10 ? 'disabled' : ''}><i class="fas fa-plus"></i></button>
+                </div>
+            </div>
+        </div>
+        <button class="btn-confirm-extra" onclick="startNhn()" ${n >= 2 ? '' : 'disabled'}><i class="fas fa-play"></i> Spiel starten</button>
+        <p class="game-setup-note">${n < 2 ? 'Mindestens 2 Spieler hinzufügen.' : `${n} Spieler bereit · ${nhn.lives} Leben.`}</p>
+    `;
+}
+function nhnSetLives(delta) { nhn.lives = Math.min(10, Math.max(1, nhn.lives + delta)); renderNhn(); }
+function startNhn() {
+    if (gamePlayers.length < 2) return;
+    const startLives = nhn.lives;
+    nhn = {
+        phase: 'play',
+        startLives,
+        players: gamePlayers.map(name => ({ name, lives: startLives })),
+        pool: shuffleArray(NHN_PROMPTS),
+        current: null,
+        winnerAnnounced: false
+    };
+    nhnNextPrompt();
+}
+function nhnNextPrompt() {
+    if (nhn.pool.length === 0) nhn.pool = shuffleArray(NHN_PROMPTS);
+    nhn.current = nhn.pool.pop();
+    renderNhn();
+}
+function nhnHit(i) {
+    const p = nhn.players[i];
+    if (p.lives <= 0) return;
+    p.lives--;
+    renderNhn();
+}
+function renderNhnPlay(panel) {
+    const alive = nhn.players.filter(p => p.lives > 0);
+    const winner = alive.length === 1 ? alive[0] : (alive.length === 0 ? 'draw' : null);
+    panel.innerHTML = `
+        <button class="game-back-btn" onclick="backToGameMenu()"><i class="fas fa-arrow-left"></i> Spieleauswahl</button>
+        ${winner ? `
+            <div class="game-winner-banner winner-village">
+                <i class="fas fa-trophy"></i> ${winner === 'draw' ? 'Alle raus — Unentschieden! 🤝' : `${winner.name} gewinnt die Runde! 🎉`}
+            </div>
+        ` : ''}
+        <div class="card nhn-prompt-card">
+            <span class="game-roster-hint">Ich hab noch nie…</span>
+            <h2 class="nhn-prompt-text">${nhn.current}</h2>
+            <button class="btn-confirm-extra" onclick="nhnNextPrompt()"><i class="fas fa-forward"></i> Nächste Aussage</button>
+        </div>
+        <div class="card">
+            <h3><i class="fas fa-users"></i> Wer hat's schon gemacht? (antippen zum Leben abziehen)</h3>
+            <div class="ww-player-grid">
+                ${nhn.players.map((p, i) => `
+                    <button class="ww-player-tile nhn-tile ${p.lives <= 0 ? 'is-dead' : ''}" onclick="nhnHit(${i})" ${p.lives <= 0 ? 'disabled' : ''}>
+                        <span class="ww-player-name">${p.name}</span>
+                        <span class="ww-player-state">${p.lives > 0 ? '❤️'.repeat(p.lives) : '☠️ Raus'}</span>
+                    </button>
+                `).join('')}
+            </div>
+        </div>
+        <button class="eu-danger-link" onclick="resetNhn()"><i class="fas fa-rotate-left"></i> Neues Spiel starten</button>
+    `;
+    if (winner && winner !== 'draw' && !nhn.winnerAnnounced) {
+        nhn.winnerAnnounced = true;
+        fireConfetti();
+        playWinChime();
+        recordGameResult('nhn', nhn.players.map(p => p.name), [winner.name]);
+    }
+}
+function resetNhn() {
+    if (!confirm('Neues "Ich hab noch nie"-Spiel starten?')) return;
+    const startLives = nhn ? nhn.startLives || 5 : 5;
+    nhn = { phase: 'setup', lives: startLives };
+    renderNhn();
 }
 
 init();
